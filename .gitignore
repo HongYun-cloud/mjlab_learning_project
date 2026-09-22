@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+MUJOCO_LOG.TXT
+MJDATA.TXT
+MJMODEL.TXT
+mjmodel.mjb

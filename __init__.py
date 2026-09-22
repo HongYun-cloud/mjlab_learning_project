@@ -1,0 +1,1 @@
+from myrobot_mjlab.task.velocity import config

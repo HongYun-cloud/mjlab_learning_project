@@ -1,0 +1,102 @@
+<mujoco model="Robocon_V1.0">
+  <compiler angle="radian" meshdir="meshes" autolimits="true"/>
+
+  <option timestep="0.001" iterations="50" solver="PGS" gravity="0 0 -9.81"/>
+
+  <asset>
+    <!-- 加载你从 SolidWorks 导出的 STL 文件 -->
+    <mesh name="base_link" file="base_link.STL"/>
+    <mesh name="FL_knee_Link" file="FL_knee_Link.STL"/>
+    <mesh name="FL_elbow_Link" file="FL_elbow_Link.STL"/>
+    <mesh name="FR_knee_Link" file="FR_knee_Link.STL"/>
+    <mesh name="FR_elbow_Link" file="FR_elbow_Link.STL"/>
+    <mesh name="RL_knee_Link" file="RL_knee_Link.STL"/>
+    <mesh name="RL_elbow_Link" file="RL_elbow_Link.STL"/>
+    <mesh name="RR_knee_Link" file="RR_knee_Link.STL"/>
+    <mesh name="RR_elbow_Link" file="RR_elbow_Link.STL"/>
+    
+    <material name="body_mat" rgba="0.9 0.9 0.9 1"/>
+    <material name="joint_mat" rgba="0.2 0.2 0.2 1"/>
+  </asset>
+
+  <default>
+    <joint damping="0.5" armature="0.01" frictionloss="0.1"/>
+    <geom contype="1" conaffinity="1" condim="3" friction="0.8 0.1 0.1"/>
+    <motor ctrlrange="-30 30"/> <!-- 这里的控制范围根据你电机的实际扭矩调整 -->
+  </default>
+
+  <worldbody>
+    <light pos="0 0 2" dir="0 0 -1" directional="true"/>
+    
+    <!-- 机器人主体 -->
+    <body name="base_link" pos="0 0 0.5">
+      <freejoint name="root"/>
+      <inertial pos="0 -0.0011 0.0034" mass="4.488" diaginertia="0.0189 0.0312 0.0469"/>
+      <geom type="mesh" mesh="base_link" material="body_mat"/>
+      <site name="imu" pos="0 0 0"/> <!-- IMU 安装位 -->
+
+      <!-- 左前腿 FL -->
+      <body name="FL_knee_Link" pos="0.2408 0.1806 0" quat="0 0 0 1">
+        <joint name="FL_knee_Joint" axis="0 1 0" type="hinge"/>
+        <geom type="mesh" mesh="FL_knee_Link" material="joint_mat"/>
+        <body name="FL_elbow_Link" pos="-0.1895 -0.0102 0.0964" quat="0 0 0 1">
+          <joint name="FL_elbow_Joint" axis="0 -1 0" type="hinge"/>
+          <geom type="mesh" mesh="FL_elbow_Link" material="body_mat"/>
+          <geom name="FL_foot" type="sphere" size="0.02" pos="-0.2 0 0.2"/> <!-- 足端碰撞体 -->
+        </body>
+      </body>
+
+      <!-- 右前腿 FR -->
+      <body name="FR_knee_Link" pos="0.2395 -0.1815 0.0013">
+        <joint name="FR_knee_Joint" axis="0 1 0" type="hinge"/>
+        <geom type="mesh" mesh="FR_knee_Link" material="joint_mat"/>
+        <body name="FR_elbow_Link" pos="-0.2038 -0.0122 -0.0566">
+          <joint name="FR_elbow_Joint" axis="0 -1 0" type="hinge"/>
+          <geom type="mesh" mesh="FR_elbow_Link" material="body_mat"/>
+          <geom name="FR_foot" type="sphere" size="0.02" pos="-0.2 0 0.2"/>
+        </body>
+      </body>
+
+      <!-- 左后腿 RL -->
+      <body name="RL_knee_Link" pos="-0.2411 0.1815 0">
+        <joint name="RL_knee_Joint" axis="0 1 0" type="hinge"/>
+        <geom type="mesh" mesh="RL_knee_Link" material="joint_mat"/>
+        <body name="RL_elbow_Link" pos="-0.1895 -0.0102 0.0964">
+          <joint name="RL_elbow_Joint" axis="0 -1 0" type="hinge"/>
+          <geom type="mesh" mesh="RL_elbow_Link" material="body_mat"/>
+          <geom name="RL_foot" type="sphere" size="0.02" pos="-0.2 0 0.2"/>
+        </body>
+      </body>
+
+      <!-- 右后腿 RR -->
+      <body name="RR_knee_Link" pos="-0.2409 -0.1806 0">
+        <joint name="RR_knee_Joint" axis="0 1 0" type="hinge"/>
+        <geom type="mesh" mesh="RR_knee_Link" material="joint_mat"/>
+        <body name="RR_elbow_Link" pos="-0.2007 -0.0097 -0.0700">
+          <joint name="RR_elbow_Joint" axis="0 -1 0" type="hinge"/>
+          <geom type="mesh" mesh="RR_elbow_Link" material="body_mat"/>
+          <geom name="RR_foot" type="sphere" size="0.02" pos="-0.2 0 0.2"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <!-- 执行器定义 (对应你 C++ 中的 d->ctrl) -->
+  <actuator>
+    <!-- 顺序按照你的 srv 定义映射 -->
+    <motor name="FL_knee"  joint="FL_knee_Joint"/>
+    <motor name="FL_elbow" joint="FL_elbow_Joint"/>
+    <motor name="FR_knee"  joint="FR_knee_Joint"/>
+    <motor name="FR_elbow" joint="FR_elbow_Joint"/>
+    <motor name="RL_knee"  joint="RL_knee_Joint"/>
+    <motor name="RL_elbow" joint="RL_elbow_Joint"/>
+    <motor name="RR_knee"  joint="RR_knee_Joint"/>
+    <motor name="RR_elbow" joint="RR_elbow_Joint"/>
+  </actuator>
+
+  <sensor>
+    <framequat name="imu_quat" objtype="site" objname="imu"/>
+    <gyro name="imu_gyro" site="imu"/>
+    <accelerometer name="imu_acc" site="imu"/>
+  </sensor>
+</mujoco>

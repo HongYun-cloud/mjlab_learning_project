@@ -5,7 +5,6 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
 from mjlab.envs.mdp import dr
 from mjlab.envs.mdp.actions import JointPositionActionCfg
-from mjlab.managers.action_manager import ActionTermCfg
 from mjlab.managers.command_manager import CommandTermCfg
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
@@ -22,13 +21,13 @@ from mjlab.sensor import (
   TerrainHeightSensorCfg,
 )
 from mjlab.sim import MujocoCfg, SimulationCfg
+from mjlab.tasks.velocity.mdp import terminations as velocity_terminations
 from mjlab.tasks.velocity import mdp
-from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.terrains.config import ROUGH_TERRAINS_CFG
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 from mjlab.viewer import ViewerConfig
-
+from myrobot_mjlab.config.command.StairVelocityCommand import StairVelocityCommandCfg
 # 通用速度任务环境cfg
 
 def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
@@ -127,21 +126,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       }
 
     commands: dict[str, CommandTermCfg] = {
-        "twist": UniformVelocityCommandCfg(
+        "twist": StairVelocityCommandCfg(
           entity_name="robot",
           resampling_time_range=(3.0, 8.0),
-          rel_standing_envs=0.1,
-          rel_heading_envs=0.3,
-          rel_forward_envs=0.2,
-          heading_command=True,
-          heading_control_stiffness=0.5,
           debug_vis=True,
-          ranges=UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0),
-            lin_vel_y=(-1.0, 1.0),
-            ang_vel_z=(-0.5, 0.5),
-            heading=(-math.pi, math.pi),
-          ),
+          forward_speed=1.0,
+          switch_steps=200,
         )
       }
 
@@ -229,38 +219,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "command_threshold": 0.5,
         },
       ),
-      # "foot_clearance": RewardTermCfg(
-      #   func=mdp.feet_clearance,
-      #   weight=-2.0,
-      #   params={
-      #     "target_height": 0.1,
-      #     "height_sensor_name": "foot_height_scan",
-      #     "command_name": "twist",
-      #     "command_threshold": 0.05,
-      #     "asset_cfg": SceneEntityCfg("robot", site_names=()),  # Set per-robot.
-      #   },
-      # ),
-      # "foot_swing_height": RewardTermCfg(
-      #   func=mdp.feet_swing_height,
-      #   weight=-0.25,
-      #   params={
-      #     "sensor_name": "feet_ground_contact",
-      #     "height_sensor_name": "foot_height_scan",
-      #     "target_height": 0.1,
-      #     "command_name": "twist",
-      #     "command_threshold": 0.05,
-      #   },
-      # ),
-      # "foot_slip": RewardTermCfg(
-      #   func=mdp.feet_slip,
-      #   weight=-0.1,
-      #   params={
-      #     "sensor_name": "feet_ground_contact",
-      #     "command_name": "twist",
-      #     "command_threshold": 0.05,
-      #     "asset_cfg": SceneEntityCfg("robot", site_names=()),  # Set per-robot.
-      #   },
-      # ),
       "soft_landing": RewardTermCfg(
         func=mdp.soft_landing,
         weight=-1e-5,
@@ -286,6 +244,11 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         func=mdp.out_of_terrain_bounds,
         time_out=True,
       ),
+      "reached_edge": TerminationTermCfg(
+        func=velocity_terminations.terrain_edge_reached,
+        params={"threshold_fraction": 0.9},
+        time_out=True,
+      ),
     }
     
     ##
@@ -297,25 +260,14 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         func=mdp.terrain_levels_vel,
         params={"command_name": "twist"},
       ),
-      "command_vel": CurriculumTermCfg(
-        func=mdp.commands_vel,
-        params={
-          "command_name": "twist",
-          "velocity_stages": [
-            {"step": 0, "lin_vel_x": (-1.0, 1.0), "ang_vel_z": (-0.5, 0.5)},
-            {"step": 5000 * 24, "lin_vel_x": (-1.5, 2.0), "ang_vel_z": (-0.7, 0.7)},
-            {"step": 10000 * 24, "lin_vel_x": (-2.0, 3.0)},
-          ],
-        },
-      ),
     }
 
     return ManagerBasedRlEnvCfg(
       scene=SceneCfg(
         terrain=TerrainEntityCfg(
-          terrain_type="generator",
-          terrain_generator=replace(ROUGH_TERRAINS_CFG),
-          max_init_terrain_level=5,
+            terrain_type="generator",
+            terrain_generator=replace(ROUGH_TERRAINS_CFG),
+            max_init_terrain_level=0,
         ),
 
         num_envs=1,

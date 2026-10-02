@@ -1,0 +1,54 @@
+{
+  "os":  "Linux-6.8.0-111-generic-x86_64-with-glibc2.35",
+  "python":  "CPython 3.13.15",
+  "startedAt":  "2026-10-02T03:57:50.049074Z",
+  "args":  [
+    "Mjlab-Velocity-StairFromFlat-Unitree-Go2",
+    "--env.scene.num-envs",
+    "1024",
+    "--agent.max-iterations",
+    "1000",
+    "--agent.wandb-project",
+    "go2_stair",
+    "--agent.run-name",
+    "change_command_vel",
+    "--agent.load-run",
+    "model",
+    "--agent.load-checkpoint",
+    "flat_999.pt",
+    "--env.viewer.env-idx",
+    "0"
+  ],
+  "program":  "/home/hong/myrobot_mjlab/.venv/bin/train",
+  "git":  {
+    "commit":  "0b6788b07068fe5a5e1c4b40cf5e05b526ae747c"
+  },
+  "email":  "2214502329@qq.com",
+  "root":  "/home/hong/myrobot_mjlab/src/myrobot_mjlab",
+  "host":  "hong",
+  "executable":  "/home/hong/myrobot_mjlab/.venv/bin/python3",
+  "cpu_count":  16,
+  "cpu_count_logical":  24,
+  "gpu":  "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "983349346304",
+      "used":  "129394696192"
+    }
+  },
+  "memory":  {
+    "total":  "16529416192"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "memoryTotal":  "8585740288",
+      "cudaCores":  3072,
+      "architecture":  "Ada",
+      "uuid":  "GPU-e6273b7c-cb53-7be6-e499-8add1a1a5bbd"
+    }
+  ],
+  "cudaVersion":  "13.2",
+  "writerId":  "sjlgappio5sie2s3s0mhnpgdig0t4rqd"
+}

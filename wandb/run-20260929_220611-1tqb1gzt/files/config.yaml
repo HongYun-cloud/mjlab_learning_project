@@ -1,0 +1,1189 @@
+_wandb:
+    value:
+        cli_version: 0.22.3
+        e:
+            qr9amrbu52j6mvzbz0yxc7qgdgy7xqxy:
+                args:
+                    - Mjlab-Velocity-StairFromFlat-Unitree-Go2
+                    - --env.scene.num-envs
+                    - "1024"
+                    - --agent.max-iterations
+                    - "1000"
+                    - --agent.wandb-project
+                    - go2_stair
+                    - --agent.run-name
+                    - change_command_vel
+                    - --agent.load-run
+                    - model
+                    - --agent.load-checkpoint
+                    - flat_999.pt
+                    - --env.viewer.env-idx
+                    - "0"
+                cpu_count: 16
+                cpu_count_logical: 24
+                cudaVersion: "13.2"
+                disk:
+                    /:
+                        total: "983349346304"
+                        used: "129864929280"
+                email: 2214502329@qq.com
+                executable: /home/hong/myrobot_mjlab/.venv/bin/python3
+                git:
+                    commit: 0b6788b07068fe5a5e1c4b40cf5e05b526ae747c
+                gpu: NVIDIA GeForce RTX 4060 Laptop GPU
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ada
+                      cudaCores: 3072
+                      memoryTotal: "8585740288"
+                      name: NVIDIA GeForce RTX 4060 Laptop GPU
+                      uuid: GPU-e6273b7c-cb53-7be6-e499-8add1a1a5bbd
+                host: hong
+                memory:
+                    total: "16529412096"
+                os: Linux-6.8.0-111-generic-x86_64-with-glibc2.35
+                program: /home/hong/myrobot_mjlab/.venv/bin/train
+                python: CPython 3.13.15
+                root: /home/hong/myrobot_mjlab/src/myrobot_mjlab
+                startedAt: "2026-09-29T14:06:11.506273Z"
+                writerId: qr9amrbu52j6mvzbz0yxc7qgdgy7xqxy
+        m: []
+        python_version: 3.13.15
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 3
+                - 13
+                - 16
+                - 61
+            "4": 3.13.15
+            "5": 0.22.3
+            "12": 0.22.3
+            "13": linux-x86_64
+env_cfg:
+    value:
+        actions:
+            joint_pos:
+                actuator_names:
+                    - .*
+                clip: null
+                entity_name: robot
+                offset: 0
+                preserve_order: false
+                scale:
+                    .*L_hip_joint: 0.335
+                    .*R_hip_joint: 0.335
+                    .*calf_joint: 0.335
+                    .*thigh_joint: 0.335
+                transmission_type: JOINT
+                use_default_offset: true
+        auto_reset: true
+        commands:
+            twist:
+                debug_vis: true
+                entity_name: robot
+                heading_command: true
+                heading_control_stiffness: 0.5
+                init_velocity_prob: 0
+                ranges:
+                    ang_vel_z:
+                        - -0.5
+                        - 0.5
+                    heading:
+                        - -3.141592653589793
+                        - 3.141592653589793
+                    lin_vel_x:
+                        - -1
+                        - 1
+                    lin_vel_y:
+                        - -1
+                        - 1
+                rel_forward_envs: 0.2
+                rel_heading_envs: 0.3
+                rel_standing_envs: 0.1
+                rel_world_envs: 0
+                resampling_time_range:
+                    - 3
+                    - 8
+                viz:
+                    scale: 0.5
+                    z_offset: 0.2
+        curriculum:
+            command_vel:
+                func: myrobot_mjlab.config.command.StairVelocityCommand.stair_direction
+                params:
+                    command_name: twist
+            terrain_levels:
+                func: mjlab.tasks.velocity.mdp.curriculums.terrain_levels_vel
+                params:
+                    command_name: twist
+        decimation: 4
+        episode_length_s: 20
+        events:
+            reset_base:
+                func: mjlab.envs.mdp.events.reset_root_state_uniform
+                interval_range_s: null
+                is_global_time: false
+                min_step_count_between_reset: 0
+                mode: reset
+                params:
+                    pose_range:
+                        x:
+                            - -0.5
+                            - 0.5
+                        "y":
+                            - -0.5
+                            - 0.5
+                        yaw:
+                            - -3.14
+                            - 3.14
+                        z:
+                            - 0.01
+                            - 0.05
+            reset_robot_joints:
+                func: mjlab.envs.mdp.events.reset_joints_by_offset
+                interval_range_s: null
+                is_global_time: false
+                min_step_count_between_reset: 0
+                mode: reset
+                params:
+                    asset_cfg:
+                        actuator_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        actuator_names: null
+                        body_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        body_names: null
+                        camera_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        camera_names: null
+                        geom_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        geom_names: null
+                        joint_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        joint_names:
+                            - .*
+                        light_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        light_names: null
+                        material_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        material_names: null
+                        name: robot
+                        pair_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        pair_names: null
+                        preserve_order: false
+                        site_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        site_names: null
+                        tendon_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        tendon_names: null
+                        texture_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        texture_names: null
+                    position_range:
+                        - 0
+                        - 0
+                    velocity_range:
+                        - 0
+                        - 0
+        is_finite_horizon: false
+        metrics:
+            mean_action_acc:
+                func: mjlab.envs.mdp.metrics.mean_action_acc
+                per_substep: false
+                reduce: mean
+        observations:
+            actor:
+                concatenate_dim: -1
+                concatenate_terms: true
+                enable_corruption: true
+                flatten_history_dim: true
+                history_length: null
+                nan_check_per_term: true
+                nan_policy: disabled
+                terms:
+                    actions:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.last_action
+                        history_length: 0
+                        noise: null
+                        scale: null
+                    base_ang_vel:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.builtin_sensor
+                        history_length: 0
+                        noise:
+                            n_max: 0.2
+                            n_min: -0.2
+                            operation: add
+                        params:
+                            sensor_name: robot/imu_gyro
+                        scale: null
+                    base_lin_vel:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.builtin_sensor
+                        history_length: 0
+                        noise:
+                            n_max: 0.5
+                            n_min: -0.5
+                            operation: add
+                        params:
+                            sensor_name: robot/frame_vel
+                        scale: null
+                    command:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.generated_commands
+                        history_length: 0
+                        noise: null
+                        params:
+                            command_name: twist
+                        scale: null
+                    joint_pos:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.joint_pos_rel
+                        history_length: 0
+                        noise:
+                            n_max: 0.01
+                            n_min: -0.01
+                            operation: add
+                        params:
+                            biased: true
+                        scale: null
+                    joint_vel:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.joint_vel_rel
+                        history_length: 0
+                        noise:
+                            n_max: 1.5
+                            n_min: -1.5
+                            operation: add
+                        scale: null
+                    projected_gravity:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.projected_gravity
+                        history_length: 0
+                        noise:
+                            n_max: 0.05
+                            n_min: -0.05
+                            operation: add
+                        scale: null
+            critic:
+                concatenate_dim: -1
+                concatenate_terms: true
+                enable_corruption: false
+                flatten_history_dim: true
+                history_length: null
+                nan_check_per_term: true
+                nan_policy: disabled
+                terms:
+                    actions:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.last_action
+                        history_length: 0
+                        noise: null
+                        scale: null
+                    base_ang_vel:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.builtin_sensor
+                        history_length: 0
+                        noise:
+                            n_max: 0.2
+                            n_min: -0.2
+                            operation: add
+                        params:
+                            sensor_name: robot/imu_gyro
+                        scale: null
+                    base_lin_vel:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.builtin_sensor
+                        history_length: 0
+                        noise:
+                            n_max: 0.5
+                            n_min: -0.5
+                            operation: add
+                        params:
+                            sensor_name: robot/frame_vel
+                        scale: null
+                    command:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.generated_commands
+                        history_length: 0
+                        noise: null
+                        params:
+                            command_name: twist
+                        scale: null
+                    foot_air_time:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.tasks.velocity.mdp.observations.foot_air_time
+                        history_length: 0
+                        noise: null
+                        params:
+                            sensor_name: feet_ground_contact
+                        scale: null
+                    foot_contact:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.tasks.velocity.mdp.observations.foot_contact
+                        history_length: 0
+                        noise: null
+                        params:
+                            sensor_name: feet_ground_contact
+                        scale: null
+                    foot_contact_forces:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.tasks.velocity.mdp.observations.foot_contact_forces
+                        history_length: 0
+                        noise: null
+                        params:
+                            sensor_name: feet_ground_contact
+                        scale: null
+                    joint_pos:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.joint_pos_rel
+                        history_length: 0
+                        noise: null
+                        scale: null
+                    joint_vel:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.joint_vel_rel
+                        history_length: 0
+                        noise:
+                            n_max: 1.5
+                            n_min: -1.5
+                            operation: add
+                        scale: null
+                    projected_gravity:
+                        clip: null
+                        delay_hold_prob: 0
+                        delay_max_lag: 0
+                        delay_min_lag: 0
+                        delay_per_env: true
+                        delay_per_env_phase: true
+                        delay_update_period: 0
+                        flatten_history_dim: true
+                        func: mjlab.envs.mdp.observations.projected_gravity
+                        history_length: 0
+                        noise:
+                            n_max: 0.05
+                            n_min: -0.05
+                            operation: add
+                        scale: null
+        rewards:
+            action_rate_l2:
+                func: mjlab.envs.mdp.rewards.action_rate_l2
+                weight: -0.1
+            air_time:
+                func: mjlab.tasks.velocity.mdp.rewards.feet_air_time
+                params:
+                    command_name: twist
+                    command_threshold: 0.5
+                    sensor_name: feet_ground_contact
+                    threshold_max: 0.5
+                    threshold_min: 0.05
+                weight: 0
+            angular_momentum:
+                func: mjlab.tasks.velocity.mdp.rewards.angular_momentum_penalty
+                params:
+                    sensor_name: robot/root_angmom
+                weight: 0
+            body_ang_vel:
+                func: mjlab.tasks.velocity.mdp.rewards.body_angular_velocity_penalty
+                params:
+                    asset_cfg:
+                        actuator_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        actuator_names: null
+                        body_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        body_names:
+                            - base_link
+                        camera_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        camera_names: null
+                        geom_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        geom_names: null
+                        joint_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        joint_names: null
+                        light_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        light_names: null
+                        material_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        material_names: null
+                        name: robot
+                        pair_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        pair_names: null
+                        preserve_order: false
+                        site_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        site_names: null
+                        tendon_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        tendon_names: null
+                        texture_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        texture_names: null
+                weight: 0
+            dof_pos_limits:
+                func: mjlab.envs.mdp.rewards.joint_pos_limits
+                weight: -1
+            pose:
+                func: mjlab.tasks.velocity.mdp.rewards.variable_posture
+                params:
+                    asset_cfg:
+                        actuator_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        actuator_names: null
+                        body_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        body_names: null
+                        camera_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        camera_names: null
+                        geom_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        geom_names: null
+                        joint_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        joint_names:
+                            - .*
+                        light_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        light_names: null
+                        material_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        material_names: null
+                        name: robot
+                        pair_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        pair_names: null
+                        preserve_order: false
+                        site_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        site_names: null
+                        tendon_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        tendon_names: null
+                        texture_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        texture_names: null
+                    command_name: twist
+                    running_threshold: 1.5
+                    std_running:
+                        .*(FR|FL|RR|RL)_(hip|thigh)_joint.*: 0.3
+                        .*(FR|FL|RR|RL)_calf_joint.*: 0.6
+                    std_standing:
+                        .*(FR|FL|RR|RL)_(hip|thigh)_joint.*: 0.05
+                        .*(FR|FL|RR|RL)_calf_joint.*: 0.1
+                    std_walking:
+                        .*(FR|FL|RR|RL)_(hip|thigh)_joint.*: 0.3
+                        .*(FR|FL|RR|RL)_calf_joint.*: 0.6
+                    walking_threshold: 0.05
+                weight: 1
+            self_collisions:
+                func: mjlab.tasks.velocity.mdp.rewards.self_collision_cost
+                params:
+                    sensor_name: self_collision
+                weight: -0.1
+            shank_collision:
+                func: mjlab.tasks.velocity.mdp.rewards.self_collision_cost
+                params:
+                    sensor_name: shank_ground_touch
+                weight: -0.1
+            soft_landing:
+                func: mjlab.tasks.velocity.mdp.rewards.soft_landing
+                params:
+                    command_name: twist
+                    command_threshold: 0.05
+                    sensor_name: feet_ground_contact
+                weight: -1e-05
+            track_angular_velocity:
+                func: mjlab.tasks.velocity.mdp.rewards.track_angular_velocity
+                params:
+                    command_name: twist
+                    std: 0.7071067811865476
+                weight: 2
+            track_linear_velocity:
+                func: mjlab.tasks.velocity.mdp.rewards.track_linear_velocity
+                params:
+                    command_name: twist
+                    std: 0.5
+                weight: 2
+            upright:
+                func: mjlab.tasks.velocity.mdp.rewards.upright
+                params:
+                    asset_cfg:
+                        actuator_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        actuator_names: null
+                        body_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        body_names:
+                            - base_link
+                        camera_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        camera_names: null
+                        geom_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        geom_names: null
+                        joint_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        joint_names: null
+                        light_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        light_names: null
+                        material_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        material_names: null
+                        name: robot
+                        pair_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        pair_names: null
+                        preserve_order: false
+                        site_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        site_names: null
+                        tendon_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        tendon_names: null
+                        texture_ids:
+                            slice_start: null
+                            slice_step: null
+                            slice_stop: null
+                        texture_names: null
+                    std: 0.4472135954999579
+                weight: 1
+        scale_rewards_by_dt: true
+        scene:
+            entities:
+                robot:
+                    articulation:
+                        actuators:
+                            - armature: null
+                              damping: 0.5
+                              delay_hold_prob: 0
+                              delay_max_lag: 0
+                              delay_min_lag: 0
+                              delay_per_env_phase: true
+                              delay_update_period: 0
+                              effort_limit: 33.5
+                              frictionloss: null
+                              stiffness: 25
+                              target_names_expr:
+                                - .*thigh_joint
+                                - .*calf_joint
+                                - .*R_hip_joint
+                                - .*L_hip_joint
+                              transmission_type: JOINT
+                              viscous_damping: null
+                        soft_joint_pos_limit_factor: 1
+                    cameras: []
+                    collisions: []
+                    geoms: []
+                    init_state:
+                        ang_vel:
+                            - 0
+                            - 0
+                            - 0
+                        joint_pos:
+                            .*L_hip_joint: -0.1
+                            .*R_hip_joint: 0.1
+                            .*calf_joint: -1.8
+                            .*thigh_joint: 0.9
+                        joint_vel:
+                            .*: 0
+                        lin_vel:
+                            - 0
+                            - 0
+                            - 0
+                        pos:
+                            - 0
+                            - 0
+                            - 0.278
+                        rot:
+                            - 1
+                            - 0
+                            - 0
+                            - 0
+                    lights: []
+                    materials: []
+                    meshes: []
+                    sort_actuators: false
+                    spec_fn: myrobot_mjlab.robot_cfg.get_spec
+                    textures: []
+            env_spacing: 2
+            extent: 2
+            num_envs: 1024
+            sensors:
+                - debug: false
+                  fields:
+                    - found
+                    - force
+                  global_frame: false
+                  history_length: 0
+                  name: feet_ground_contact
+                  num_slots: 1
+                  primary:
+                    entity: robot
+                    exclude: []
+                    mode: geom
+                    pattern:
+                        - FR
+                        - FL
+                        - RR
+                        - RL
+                  reduce: netforce
+                  secondary:
+                    entity: null
+                    exclude: []
+                    mode: body
+                    pattern: terrain
+                  secondary_policy: first
+                  track_air_time: true
+                - debug: false
+                  fields:
+                    - found
+                    - force
+                  global_frame: false
+                  history_length: 4
+                  name: self_collision
+                  num_slots: 1
+                  primary:
+                    entity: robot
+                    exclude: []
+                    mode: subtree
+                    pattern: base_link
+                  reduce: none
+                  secondary:
+                    entity: robot
+                    exclude: []
+                    mode: subtree
+                    pattern: base_link
+                  secondary_policy: first
+                  track_air_time: false
+                - debug: false
+                  fields:
+                    - found
+                    - force
+                  global_frame: false
+                  history_length: 4
+                  name: thigh_ground_touch
+                  num_slots: 1
+                  primary:
+                    entity: robot
+                    exclude: []
+                    mode: geom
+                    pattern:
+                        - FR_thigh_collision
+                        - FL_thigh_collision
+                        - RR_thigh_collision
+                        - RL_thigh_collision
+                  reduce: none
+                  secondary:
+                    entity: null
+                    exclude: []
+                    mode: body
+                    pattern: terrain
+                  secondary_policy: first
+                  track_air_time: false
+                - debug: false
+                  fields:
+                    - found
+                    - force
+                  global_frame: false
+                  history_length: 4
+                  name: shank_ground_touch
+                  num_slots: 1
+                  primary:
+                    entity: robot
+                    exclude: []
+                    mode: geom
+                    pattern:
+                        - FR_calf_collision
+                        - FL_calf_collision
+                        - RR_calf_collision
+                        - RL_calf_collision
+                  reduce: none
+                  secondary:
+                    entity: null
+                    exclude: []
+                    mode: body
+                    pattern: terrain
+                  secondary_policy: first
+                  track_air_time: false
+            spec_fn: null
+            terrain:
+                articulation: null
+                cameras: []
+                collisions: []
+                debug_vis: false
+                env_spacing: 2
+                geoms: []
+                init_state:
+                    ang_vel:
+                        - 0
+                        - 0
+                        - 0
+                    joint_pos:
+                        .*: 0
+                    joint_vel:
+                        .*: 0
+                    lin_vel:
+                        - 0
+                        - 0
+                        - 0
+                    pos:
+                        - 0
+                        - 0
+                        - 0
+                    rot:
+                        - 1
+                        - 0
+                        - 0
+                        - 0
+                lights:
+                    - active: true
+                      ambient: null
+                      attenuation:
+                        - 1
+                        - 0
+                        - 0
+                      body: world
+                      castshadow: true
+                      cutoff: 45
+                      diffuse: null
+                      dir:
+                        - 0
+                        - 0
+                        - -1
+                      exponent: 10
+                      mode: fixed
+                      name: sun
+                      pos:
+                        - 0
+                        - 0
+                        - 1.5
+                      specular: null
+                      target: null
+                      type: directional
+                materials:
+                    - geom_names_expr:
+                        - terrain$
+                      name: groundplane
+                      reflectance: 0.2
+                      rgba:
+                        - 1
+                        - 1
+                        - 1
+                        - 1
+                      texrepeat:
+                        - 4
+                        - 4
+                      texture: groundplane
+                      texuniform: true
+                max_init_terrain_level: 0
+                meshes: []
+                num_envs: 1024
+                sort_actuators: false
+                spec_fn: mjlab.entity.entity.EntityCfg.<lambda>.<locals>.<lambda>
+                terrain_generator:
+                    add_lights: true
+                    border_height: 1
+                    border_width: 20
+                    color_scheme: height
+                    curriculum: false
+                    difficulty_range:
+                        - 0
+                        - 1
+                    num_cols: 1
+                    num_rows: 10
+                    seed: null
+                    size:
+                        - 8
+                        - 8
+                    sub_terrains:
+                        pyramid_stairs:
+                            border_width: 1
+                            flat_patch_sampling: null
+                            holes: false
+                            platform_width: 3
+                            proportion: 1
+                            size:
+                                - 8
+                                - 8
+                            step_height_range:
+                                - 0
+                                - 0.1
+                            step_width: 0.3
+                terrain_type: generator
+                textures:
+                    - builtin: checker
+                      cubefiles: null
+                      file: null
+                      gridlayout: null
+                      gridsize: null
+                      height: 300
+                      hflip: false
+                      mark: edge
+                      markrgb:
+                        - 0.8
+                        - 0.8
+                        - 0.8
+                      name: groundplane
+                      nchannel: 3
+                      random: 0.01
+                      rgb1:
+                        - 0.2
+                        - 0.3
+                        - 0.4
+                      rgb2:
+                        - 0.1
+                        - 0.2
+                        - 0.3
+                      type: 2d
+                      vflip: false
+                      width: 300
+        seed: 42
+        sim:
+            broadphase: null
+            broadphase_filter: null
+            contact_sensor_maxmatch: 500
+            ls_parallel: null
+            mujoco:
+                ccd_iterations: 500
+                cone: elliptic
+                disableflags:
+                    - multiccd
+                    - nativeccd
+                enableflags: []
+                gravity:
+                    - 0
+                    - 0
+                    - -9.81
+                impratio: 10
+                integrator: implicitfast
+                iterations: 10
+                jacobian: auto
+                ls_iterations: 20
+                ls_tolerance: 0.01
+                solver: newton
+                timestep: 0.005
+                tolerance: 1e-08
+            nan_guard:
+                buffer_size: 100
+                enabled: false
+                max_envs_to_dump: 5
+                output_dir: /tmp/mjlab/nan_dumps
+            nconmax: 35
+            njmax: 1500
+        terminations:
+            illegal_contact:
+                func: mjlab.tasks.velocity.mdp.terminations.illegal_contact
+                params:
+                    sensor_name: thigh_ground_touch
+                time_out: false
+            out_of_terrain_bounds:
+                func: mjlab.tasks.velocity.mdp.terminations.out_of_terrain_bounds
+                time_out: true
+            time_out:
+                func: mjlab.envs.mdp.terminations.time_out
+                time_out: true
+        viewer:
+            azimuth: 90
+            body_name: base_link
+            distance: 1.5
+            elevation: -10
+            enable_reflections: true
+            enable_shadows: true
+            entity_name: robot
+            env_idx: 0
+            fovy: null
+            geom_group:
+                - 1
+                - 1
+                - 1
+                - 0
+                - 0
+                - 0
+            height: 240
+            lookat:
+                - 0
+                - 0
+                - 0
+            max_extra_envs: 2
+            origin_type: ASSET_BODY
+            reward_bar_max_terms: 20
+            site_group:
+                - 1
+                - 1
+                - 1
+                - 0
+                - 0
+                - 0
+            width: 320
+log_dir:
+    value: /home/hong/myrobot_mjlab/src/myrobot_mjlab/logs/rsl_rl/go2_velocity/2026-09-29_22-06-07_change_command_vel
+train_cfg:
+    value:
+        actor:
+            activation: elu
+            distribution_cfg:
+                init_std: 1
+                std_type: scalar
+            hidden_dims:
+                - 512
+                - 256
+                - 128
+            obs_normalization: true
+        algorithm:
+            clip_param: 0.2
+            desired_kl: 0.01
+            entropy_coef: 0.01
+            gamma: 0.99
+            lam: 0.95
+            learning_rate: 0.001
+            max_grad_norm: 1
+            normalize_advantage_per_mini_batch: false
+            num_learning_epochs: 5
+            num_mini_batches: 4
+            optimizer: adam
+            rnd_cfg: null
+            schedule: adaptive
+            symmetry_cfg: null
+            use_clipped_value_loss: true
+            value_loss_coef: 1
+        class_name: OnPolicyRunner
+        clip_actions: null
+        critic:
+            activation: elu
+            hidden_dims:
+                - 512
+                - 256
+                - 128
+            obs_normalization: true
+        experiment_name: go2_velocity
+        load_checkpoint: flat_999.pt
+        load_run: model
+        logger: wandb
+        max_iterations: 1000
+        multi_gpu: null
+        num_steps_per_env: 24
+        obs_groups:
+            actor:
+                - actor
+            critic:
+                - critic
+        resume: false
+        run_name: change_command_vel
+        save_interval: 50
+        seed: 42
+        upload_model: true
+        wandb_project: go2_stair
+        wandb_tags: []

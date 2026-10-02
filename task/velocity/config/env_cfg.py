@@ -1,5 +1,6 @@
 import math
 from typing import Literal
+from dataclasses import replace
 
 from myrobot_mjlab.robot_cfg import (
   GO2_ACTION_SCALE,
@@ -23,6 +24,9 @@ from mjlab.sensor import (
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from myrobot_mjlab.task.velocity.velocity_env_cfg import make_velocity_env_cfg
+from mjlab.scene import SceneCfg
+from mjlab.terrains import TerrainEntityCfg
+from myrobot_mjlab.config.terrain.stair_terrain import STAIRS_TERRAINS_CFG
 
 def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg = make_velocity_env_cfg()
@@ -35,13 +39,14 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
 
   cfg.scene.entities = {"robot": get_go2_robot_cfg()} 
 
+  
 
 
   foot_names = ("FR", "FL", "RR", "RL")
   geom_names = ("FR", "FL", "RR", "RL")
 
   
-    # 足端和场景的碰撞
+  # 足端和场景的碰撞
   feet_ground_cfg = ContactSensorCfg(
     name="feet_ground_contact",
     primary=ContactMatch(mode="geom", pattern=geom_names, entity="robot"),
@@ -96,25 +101,29 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
     num_slots=1,
     history_length=4,
   )
-  trunk_head_ground_cfg = ContactSensorCfg(
-    name="trunk_ground_touch",
-    primary=ContactMatch(
-      mode="geom",
-      entity="robot",
-      pattern=("trunk_collision", "head_collision"),
-    ),
-    secondary=ContactMatch(mode="body", pattern="terrain"),
-    fields=("found", "force"),
-    reduce="none",
-    num_slots=1,
-    history_length=4,
-  )
+  
+  
+  # trunk_head_ground_cfg = ContactSensorCfg(
+  #   name="trunk_ground_touch",
+  #   primary=ContactMatch(
+  #     mode="geom",
+  #     entity="robot",
+  #     pattern=("trunk_collision", "head_collision"),
+  #   ),
+  #   secondary=ContactMatch(mode="body", pattern="terrain"),
+  #   fields=("found", "force"),
+  #   reduce="none",
+  #   num_slots=1,
+  #   history_length=4,
+  # )
+  
+  
   cfg.scene.sensors = (cfg.scene.sensors or ()) + (
     feet_ground_cfg,
     self_collision_cfg,
     thigh_ground_cfg,
     shank_ground_cfg,
-    trunk_head_ground_cfg,
+    # trunk_head_ground_cfg,
   )
 
   if cfg.scene.terrain is not None and cfg.scene.terrain.terrain_generator is not None:
@@ -165,11 +174,11 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
     weight=-0.1,
     params={"sensor_name": shank_ground_cfg.name},
   )
-  cfg.rewards["trunk_head_collision"] = RewardTermCfg(
-    func=mdp.self_collision_cost,
-    weight=-0.1,
-    params={"sensor_name": trunk_head_ground_cfg.name},
-  )
+  # cfg.rewards["trunk_head_collision"] = RewardTermCfg(
+  #   func=mdp.self_collision_cost,
+  #   weight=-0.1,
+  #   params={"sensor_name": trunk_head_ground_cfg.name},
+  # )
 
   # On rough terrain the quadruped tilts significantly; don't terminate on
   # orientation alone. Let out_of_terrain_bounds handle resets.
@@ -200,6 +209,24 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
 
   return cfg
 
+def my_go2_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  cfg = my_go2_rough_env_cfg(play=play)
+  cfg.scene.terrain = TerrainEntityCfg(
+            terrain_type="generator",
+            terrain_generator=replace(STAIRS_TERRAINS_CFG),
+            max_init_terrain_level=0,
+        )
+  remove_sensors = {
+      "terrain_scan",
+      
+  }
+
+  cfg.scene.sensors = tuple(
+    s for s in (cfg.scene.sensors or ()) if s.name not in remove_sensors
+  )
+  cfg.rewards["upright"].params.pop("terrain_sensor_names", None)
+
+  return cfg
 
 def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Create Unitree Go1 flat terrain velocity configuration."""
@@ -223,6 +250,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     "shank_ground_touch",
     "trunk_ground_touch",
   }
+
   cfg.scene.sensors = tuple(
     s for s in (cfg.scene.sensors or ()) if s.name not in remove_sensors
   )

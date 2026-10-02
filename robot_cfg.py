@@ -10,7 +10,7 @@ from mjlab.actuator import BuiltinPositionActuatorCfg
 
 
 GO2_XML = Path(
-    "src/myrobot_mjlab/myrobot/go2/go2.xml"
+    "myrobot/go2/go2.xml"
 )
 
 

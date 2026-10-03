@@ -39,13 +39,10 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
 
   cfg.scene.entities = {"robot": get_go2_robot_cfg()} 
 
-  
-
 
   foot_names = ("FR", "FL", "RR", "RL")
   geom_names = ("FR", "FL", "RR", "RL")
 
-  
   # 足端和场景的碰撞
   feet_ground_cfg = ContactSensorCfg(
     name="feet_ground_contact",
@@ -102,7 +99,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
     history_length=4,
   )
   
-  
+
   # trunk_head_ground_cfg = ContactSensorCfg(
   #   name="trunk_ground_touch",
   #   primary=ContactMatch(
@@ -117,7 +114,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   #   history_length=4,
   # )
   
-  
+
   cfg.scene.sensors = (cfg.scene.sensors or ()) + (
     feet_ground_cfg,
     self_collision_cfg,
@@ -136,7 +133,6 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg.viewer.body_name = "base_link"
   cfg.viewer.distance = 1.5
   cfg.viewer.elevation = -10.0
-
 
 
   cfg.rewards["pose"].params["std_standing"] = {
@@ -225,6 +221,7 @@ def my_go2_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     s for s in (cfg.scene.sensors or ()) if s.name not in remove_sensors
   )
   cfg.rewards["upright"].params.pop("terrain_sensor_names", None)
+
 
   return cfg
 

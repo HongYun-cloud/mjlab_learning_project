@@ -1,0 +1,291 @@
+Could not find git repository in /home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/rsl_rl/__init__.py. Skipping.
+Could not find git repository in /home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/scripts/train.py. Skipping.
+################################################################################
+[1m                           Learning iteration 0/1000                            [0m
+
+                               Run name: reset_reset_base
+                            Total steps: 24576
+                       Steps per second: 17538
+                        Collection time: 1.230s
+                          Learning time: 0.171s
+                        Mean value loss: 0.0164
+                    Mean surrogate loss: -0.0027
+                      Mean entropy loss: 16.9843
+                            Mean reward: -0.03
+                    Mean episode length: 5.90
+                        Mean action std: 1.00
+          Episode_Reward/dof_pos_limits: -0.0000
+    Episode_Termination/illegal_contact: 26.9091
+         Episode_Reward/self_collisions: -0.0000
+            Metrics/twist/error_vel_yaw: 0.0058
+            Episode_Reward/soft_landing: -0.0000
+         Curriculum/terrain_levels/mean: 0.0261
+             Metrics/landing_force_mean: 99.9702
+                    Episode_Reward/pose: 0.0046
+          Curriculum/terrain_levels/max: 1.7727
+Episode_Termination/out_of_terrain_bounds: 0.0000
+                 Episode_Reward/upright: 0.0058
+       Episode_Termination/reached_edge: 142.7273
+           Episode_Termination/time_out: 0.0909
+  Episode_Reward/track_angular_velocity: 0.0014
+                Episode_Reward/air_time: 0.0000
+        Episode_Reward/angular_momentum: 0.0000
+   Episode_Reward/track_linear_velocity: 0.0001
+Curriculum/terrain_levels/pyramid_stairs: 0.0261
+        Episode_Metrics/mean_action_acc: 1.5852
+            Episode_Reward/body_ang_vel: 0.0000
+          Episode_Reward/action_rate_l2: -0.0134
+         Episode_Reward/shank_collision: -0.0001
+             Metrics/twist/error_vel_xy: 0.0151
+--------------------------------------------------------------------------------
+                         Iteration time: 1.40s
+                           Time elapsed: 0:00:01
+                                    ETA: 0:23:19
+
+################################################################################
+[1m                           Learning iteration 1/1000                            [0m
+
+                               Run name: reset_reset_base
+                            Total steps: 49152
+                       Steps per second: 40230
+                        Collection time: 0.541s
+                          Learning time: 0.070s
+                        Mean value loss: 0.0074
+                    Mean surrogate loss: -0.0116
+                      Mean entropy loss: 16.9612
+                            Mean reward: -0.02
+                    Mean episode length: 6.08
+                        Mean action std: 0.99
+          Episode_Reward/dof_pos_limits: -0.0000
+    Episode_Termination/illegal_contact: 32.7083
+         Episode_Reward/self_collisions: -0.0000
+            Metrics/twist/error_vel_yaw: 0.0072
+            Episode_Reward/soft_landing: -0.0000
+         Curriculum/terrain_levels/mean: 0.0239
+             Metrics/landing_force_mean: 118.7455
+                    Episode_Reward/pose: 0.0052
+          Curriculum/terrain_levels/max: 1.6250
+Episode_Termination/out_of_terrain_bounds: 0.0000
+                 Episode_Reward/upright: 0.0065
+       Episode_Termination/reached_edge: 110.9167
+           Episode_Termination/time_out: 0.0417
+  Episode_Reward/track_angular_velocity: 0.0014
+                Episode_Reward/air_time: 0.0000
+        Episode_Reward/angular_momentum: 0.0000
+   Episode_Reward/track_linear_velocity: 0.0001
+Curriculum/terrain_levels/pyramid_stairs: 0.0239
+        Episode_Metrics/mean_action_acc: 1.5994
+            Episode_Reward/body_ang_vel: 0.0000
+          Episode_Reward/action_rate_l2: -0.0155
+         Episode_Reward/shank_collision: -0.0001
+             Metrics/twist/error_vel_xy: 0.0181
+--------------------------------------------------------------------------------
+                         Iteration time: 0.61s
+                           Time elapsed: 0:00:02
+                                    ETA: 0:16:44
+
+################################################################################
+[1m                           Learning iteration 2/1000                            [0m
+
+                               Run name: reset_reset_base
+                            Total steps: 73728
+                       Steps per second: 40574
+                        Collection time: 0.537s
+                          Learning time: 0.069s
+                        Mean value loss: 0.0074
+                    Mean surrogate loss: -0.0122
+                      Mean entropy loss: 16.9289
+                            Mean reward: -0.04
+                    Mean episode length: 7.72
+                        Mean action std: 0.99
+          Episode_Reward/dof_pos_limits: -0.0000
+    Episode_Termination/illegal_contact: 34.9167
+         Episode_Reward/self_collisions: -0.0000
+            Metrics/twist/error_vel_yaw: 0.0069
+            Episode_Reward/soft_landing: -0.0000
+         Curriculum/terrain_levels/mean: 0.0301
+             Metrics/landing_force_mean: 117.6898
+                    Episode_Reward/pose: 0.0050
+          Curriculum/terrain_levels/max: 2.0000
+Episode_Termination/out_of_terrain_bounds: 0.0000
+                 Episode_Reward/upright: 0.0063
+       Episode_Termination/reached_edge: 121.9583
+           Episode_Termination/time_out: 0.0000
+  Episode_Reward/track_angular_velocity: 0.0014
+                Episode_Reward/air_time: 0.0000
+        Episode_Reward/angular_momentum: 0.0000
+   Episode_Reward/track_linear_velocity: 0.0001
+Curriculum/terrain_levels/pyramid_stairs: 0.0301
+        Episode_Metrics/mean_action_acc: 1.5625
+            Episode_Reward/body_ang_vel: 0.0000
+          Episode_Reward/action_rate_l2: -0.0144
+         Episode_Reward/shank_collision: -0.0001
+             Metrics/twist/error_vel_xy: 0.0173
+--------------------------------------------------------------------------------
+                         Iteration time: 0.61s
+                           Time elapsed: 0:00:02
+                                    ETA: 0:14:29
+
+################################################################################
+[1m                           Learning iteration 3/1000                            [0m
+
+                               Run name: reset_reset_base
+                            Total steps: 98304
+                       Steps per second: 40244
+                        Collection time: 0.538s
+                          Learning time: 0.073s
+                        Mean value loss: 0.0053
+                    Mean surrogate loss: -0.0142
+                      Mean entropy loss: 16.8986
+                            Mean reward: -0.03
+                    Mean episode length: 7.16
+                        Mean action std: 0.99
+          Episode_Reward/dof_pos_limits: -0.0000
+    Episode_Termination/illegal_contact: 42.7500
+         Episode_Reward/self_collisions: -0.0000
+            Metrics/twist/error_vel_yaw: 0.0067
+            Episode_Reward/soft_landing: -0.0000
+         Curriculum/terrain_levels/mean: 0.0262
+             Metrics/landing_force_mean: 121.4346
+                    Episode_Reward/pose: 0.0048
+          Curriculum/terrain_levels/max: 2.0000
+Episode_Termination/out_of_terrain_bounds: 0.0000
+                 Episode_Reward/upright: 0.0063
+       Episode_Termination/reached_edge: 120.1667
+           Episode_Termination/time_out: 0.0000
+  Episode_Reward/track_angular_velocity: 0.0014
+                Episode_Reward/air_time: 0.0000
+        Episode_Reward/angular_momentum: 0.0000
+   Episode_Reward/track_linear_velocity: 0.0001
+Curriculum/terrain_levels/pyramid_stairs: 0.0262
+        Episode_Metrics/mean_action_acc: 1.5379
+            Episode_Reward/body_ang_vel: 0.0000
+          Episode_Reward/action_rate_l2: -0.0136
+         Episode_Reward/shank_collision: -0.0001
+             Metrics/twist/error_vel_xy: 0.0169
+--------------------------------------------------------------------------------
+                         Iteration time: 0.61s
+                           Time elapsed: 0:00:03
+                                    ETA: 0:13:23
+
+################################################################################
+[1m                           Learning iteration 4/1000                            [0m
+
+                               Run name: reset_reset_base
+                            Total steps: 122880
+                       Steps per second: 40050
+                        Collection time: 0.542s
+                          Learning time: 0.072s
+                        Mean value loss: 0.0038
+                    Mean surrogate loss: -0.0146
+                      Mean entropy loss: 16.8696
+                            Mean reward: -0.00
+                    Mean episode length: 5.49
+                        Mean action std: 0.99
+          Episode_Reward/dof_pos_limits: -0.0000
+    Episode_Termination/illegal_contact: 48.5000
+         Episode_Reward/self_collisions: -0.0000
+            Metrics/twist/error_vel_yaw: 0.0057
+            Episode_Reward/soft_landing: -0.0000
+         Curriculum/terrain_levels/mean: 0.0275
+             Metrics/landing_force_mean: 126.0348
+                    Episode_Reward/pose: 0.0044
+          Curriculum/terrain_levels/max: 1.8750
+Episode_Termination/out_of_terrain_bounds: 0.0000
+                 Episode_Reward/upright: 0.0058
+       Episode_Termination/reached_edge: 128.2500
+           Episode_Termination/time_out: 0.0000
+  Episode_Reward/track_angular_velocity: 0.0013
+                Episode_Reward/air_time: 0.0000
+        Episode_Reward/angular_momentum: 0.0000
+   Episode_Reward/track_linear_velocity: 0.0001
+Curriculum/terrain_levels/pyramid_stairs: 0.0275
+        Episode_Metrics/mean_action_acc: 1.5080
+            Episode_Reward/body_ang_vel: 0.0000
+          Episode_Reward/action_rate_l2: -0.0118
+         Episode_Reward/shank_collision: -0.0001
+             Metrics/twist/error_vel_xy: 0.0150
+--------------------------------------------------------------------------------
+                         Iteration time: 0.61s
+                           Time elapsed: 0:00:03
+                                    ETA: 0:12:44
+
+################################################################################
+[1m                           Learning iteration 5/1000                            [0m
+
+                               Run name: reset_reset_base
+                            Total steps: 147456
+                       Steps per second: 38843
+                        Collection time: 0.559s
+                          Learning time: 0.074s
+                        Mean value loss: 0.0029
+                    Mean surrogate loss: -0.0120
+                      Mean entropy loss: 16.8388
+                            Mean reward: -0.00
+                    Mean episode length: 6.16
+                        Mean action std: 0.98
+          Episode_Reward/dof_pos_limits: -0.0000
+    Episode_Termination/illegal_contact: 48.5000
+         Episode_Reward/self_collisions: -0.0000
+            Metrics/twist/error_vel_yaw: 0.0054
+            Episode_Reward/soft_landing: -0.0000
+         Curriculum/terrain_levels/mean: 0.0316
+             Metrics/landing_force_mean: 125.7432
+                    Episode_Reward/pose: 0.0042
+          Curriculum/terrain_levels/max: 1.3333
+Episode_Termination/out_of_terrain_bounds: 0.0000
+                 Episode_Reward/upright: 0.0055
+       Episode_Termination/reached_edge: 129.7917
+           Episode_Termination/time_out: 0.0000
+  Episode_Reward/track_angular_velocity: 0.0013
+                Episode_Reward/air_time: 0.0000
+        Episode_Reward/angular_momentum: 0.0000
+   Episode_Reward/track_linear_velocity: 0.0001
+Curriculum/terrain_levels/pyramid_stairs: 0.0316
+        Episode_Metrics/mean_action_acc: 1.4827
+            Episode_Reward/body_ang_vel: 0.0000
+          Episode_Reward/action_rate_l2: -0.0109
+         Episode_Reward/shank_collision: -0.0001
+             Metrics/twist/error_vel_xy: 0.0142
+--------------------------------------------------------------------------------
+                         Iteration time: 0.63s
+                           Time elapsed: 0:00:04
+                                    ETA: 0:12:21
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/bin/train", line 10, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/scripts/train.py", line 254, in main
+    launch_training(task_id=chosen_task, args=args)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/scripts/train.py", line 203, in launch_training
+    run_train(task_id, args, log_dir)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/scripts/train.py", line 175, in run_train
+    runner.learn(
+    ~~~~~~~~~~~~^
+      num_learning_iterations=cfg.agent.max_iterations, init_at_random_ep_len=True
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/rsl_rl/runners/on_policy_runner.py", line 87, in learn
+    obs, rewards, dones, extras = self.env.step(actions.to(self.env.device))
+                                  ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/rl/vecenv_wrapper.py", line 77, in step
+    obs_dict, rew, terminated, truncated, extras = self.env.step(actions)
+                                                   ~~~~~~~~~~~~~^^^^^^^^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/envs/manager_based_rl_env.py", line 442, in step
+    self.scene.update(dt=self.physics_dt)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/scene/scene.py", line 200, in update
+    sensor.update(dt)
+    ~~~~~~~~~~~~~^^^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/sensor/contact_sensor.py", line 372, in update
+    self._update_history()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/sensor/contact_sensor.py", line 491, in _update_history
+    contact_data = self._extract_sensor_data()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/mjlab/sensor/contact_sensor.py", line 405, in _extract_sensor_data
+    raw = slot.data_view.view(slot.data_view.size(0), self.cfg.num_slots, field_dim)
+                              ~~~~~~~~~~~~~~~~~~~^^^
+KeyboardInterrupt

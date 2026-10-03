@@ -1,0 +1,285 @@
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_setup.py:_flush():81] Current SDK version is 0.22.3
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_setup.py:_flush():81] Configure stats pid to 99896
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_setup.py:_flush():81] Loading settings from /home/hong/.config/wandb/settings
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_setup.py:_flush():81] Loading settings from /home/hong/myrobot_mjlab/src/myrobot_mjlab/wandb/settings
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_setup.py:_flush():81] Loading settings from environment variables
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_init.py:setup_run_log_directory():706] Logging user logs to /home/hong/myrobot_mjlab/src/myrobot_mjlab/wandb/run-20261002_135355-03th3uqa/logs/debug.log
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_init.py:setup_run_log_directory():707] Logging internal logs to /home/hong/myrobot_mjlab/src/myrobot_mjlab/wandb/run-20261002_135355-03th3uqa/logs/debug-internal.log
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_init.py:init():833] calling init triggers
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_init.py:init():838] wandb.init called with sweep_config: {}
+config: {'log_dir': '/home/hong/myrobot_mjlab/src/myrobot_mjlab/logs/rsl_rl/go2_velocity/2026-10-02_13-53-52_reset_reset_base', '_wandb': {}}
+2026-10-02 13:53:55,713 INFO    MainThread:99896 [wandb_init.py:init():881] starting backend
+2026-10-02 13:53:55,917 INFO    MainThread:99896 [wandb_init.py:init():884] sending inform_init request
+2026-10-02 13:53:55,935 INFO    MainThread:99896 [wandb_init.py:init():892] backend started and connected
+2026-10-02 13:53:55,936 INFO    MainThread:99896 [wandb_init.py:init():962] updated telemetry
+2026-10-02 13:53:55,941 INFO    MainThread:99896 [wandb_init.py:init():986] communicating run to backend with 90.0 second timeout
+2026-10-02 13:53:57,248 INFO    MainThread:99896 [wandb_init.py:init():1033] starting run threads in backend
+2026-10-02 13:53:57,327 INFO    MainThread:99896 [wandb_run.py:_console_start():2506] atexit reg
+2026-10-02 13:53:57,327 INFO    MainThread:99896 [wandb_run.py:_redirect():2354] redirect: wrap_raw
+2026-10-02 13:53:57,327 INFO    MainThread:99896 [wandb_run.py:_redirect():2423] Wrapping output streams.
+2026-10-02 13:53:57,327 INFO    MainThread:99896 [wandb_run.py:_redirect():2446] Redirects installed.
+2026-10-02 13:53:57,328 INFO    MainThread:99896 [wandb_init.py:init():1073] run started, returning control to user process
+2026-10-02 13:53:57,329 INFO    MainThread:99896 [wandb_run.py:_config_callback():1390] config_cb None None {'train_cfg': {'seed': 42, 'num_steps_per_env': 24, 'max_iterations': 1000, 'obs_groups': {'actor': ['actor'], 'critic': ['critic']}, 'save_interval': 50, 'experiment_name': 'go2_velocity', 'run_name': 'reset_reset_base', 'logger': 'wandb', 'wandb_project': 'go2_stair', 'wandb_tags': [], 'resume': False, 'load_run': 'model', 'load_checkpoint': 'flat_999.pt', 'clip_actions': None, 'upload_model': True, 'class_name': 'OnPolicyRunner', 'actor': {'hidden_dims': [512, 256, 128], 'activation': 'elu', 'obs_normalization': True, 'distribution_cfg': {'init_std': 1.0, 'std_type': 'scalar'}}, 'critic': {'hidden_dims': [512, 256, 128], 'activation': 'elu', 'obs_normalization': True}, 'algorithm': {'num_learning_epochs': 5, 'num_mini_batches': 4, 'learning_rate': 0.001, 'schedule': 'adaptive', 'gamma': 0.99, 'lam': 0.95, 'entropy_coef': 0.01, 'desired_kl': 0.01, 'max_grad_norm': 1.0, 'value_loss_coef': 1.0, 'use_clipped_value_loss': True, 'clip_param': 0.2, 'normalize_advantage_per_mini_batch': False, 'optimizer': 'adam', 'rnd_cfg': None, 'symmetry_cfg': None}, 'multi_gpu': None}}
+2026-10-02 13:53:57,331 INFO    MainThread:99896 [wandb_run.py:_config_callback():1390] config_cb None None {'env_cfg': {'decimation': 4, 'scene': {'num_envs': 1024, 'env_spacing': 2.0, 'terrain': {'init_state': {'pos': [0.0, 0.0, 0.0], 'rot': [1.0, 0.0, 0.0, 0.0], 'lin_vel': [0.0, 0.0, 0.0], 'ang_vel': [0.0, 0.0, 0.0], 'joint_pos': {'.*': 0.0}, 'joint_vel': {'.*': 0.0}}, 'spec_fn': 'mjlab.entity.entity.EntityCfg.<lambda>.<locals>.<lambda>', 'articulation': None, 'sort_actuators': False, 'lights': [{'name': 'sun', 'body': 'world', 'mode': 'fixed', 'target': None, 'type': 'directional', 'castshadow': True, 'pos': [0.0, 0.0, 1.5], 'dir': [0.0, 0.0, -1.0], 'cutoff': 45.0, 'exponent': 10.0, 'diffuse': None, 'specular': None, 'ambient': None, 'active': True, 'attenuation': [1.0, 0.0, 0.0]}], 'cameras': [], 'textures': [{'name': 'groundplane', 'type': '2d', 'builtin': 'checker', 'rgb1': [0.2, 0.3, 0.4], 'rgb2': [0.1, 0.2, 0.3], 'width': 300, 'height': 300, 'mark': 'edge', 'markrgb': [0.8, 0.8, 0.8], 'random': 0.01, 'file': None, 'cubefiles': None, 'gridsize': None, 'gridlayout': None, 'nchannel': 3, 'hflip': False, 'vflip': False}], 'materials': [{'name': 'groundplane', 'rgba': [1.0, 1.0, 1.0, 1.0], 'texuniform': True, 'texrepeat': [4.0, 4.0], 'reflectance': 0.2, 'texture': 'groundplane', 'geom_names_expr': ['terrain$']}], 'meshes': [], 'geoms': [], 'collisions': [], 'terrain_type': 'generator', 'terrain_generator': {'seed': None, 'curriculum': False, 'size': [8.0, 8.0], 'border_width': 20.0, 'border_height': 1.0, 'num_rows': 10, 'num_cols': 1, 'color_scheme': 'height', 'sub_terrains': {'pyramid_stairs': {'proportion': 1.0, 'size': [8.0, 8.0], 'flat_patch_sampling': None, 'border_width': 1.0, 'step_height_range': [0.0, 0.1], 'step_width': 0.3, 'platform_width': 3.0, 'holes': False}}, 'difficulty_range': [0.0, 1.0], 'add_lights': True}, 'env_spacing': 2.0, 'max_init_terrain_level': 0, 'num_envs': 1024, 'debug_vis': False}, 'entities': {'robot': {'init_state': {'pos': [0.0, 0.0, 0.278], 'rot': [1.0, 0.0, 0.0, 0.0], 'lin_vel': [0.0, 0.0, 0.0], 'ang_vel': [0.0, 0.0, 0.0], 'joint_pos': {'.*thigh_joint': 0.9, '.*calf_joint': -1.8, '.*R_hip_joint': 0.1, '.*L_hip_joint': -0.1}, 'joint_vel': {'.*': 0.0}}, 'spec_fn': 'myrobot_mjlab.robot_cfg.get_spec', 'articulation': {'actuators': [{'target_names_expr': ['.*thigh_joint', '.*calf_joint', '.*R_hip_joint', '.*L_hip_joint'], 'transmission_type': 'JOINT', 'armature': None, 'frictionloss': None, 'viscous_damping': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'stiffness': 25.0, 'damping': 0.5, 'effort_limit': 33.5}], 'soft_joint_pos_limit_factor': 1.0}, 'sort_actuators': False, 'lights': [], 'cameras': [], 'textures': [], 'materials': [], 'meshes': [], 'geoms': [], 'collisions': []}}, 'sensors': [{'name': 'feet_ground_contact', 'primary': {'mode': 'geom', 'pattern': ['FR', 'FL', 'RR', 'RL'], 'entity': 'robot', 'exclude': []}, 'secondary': {'mode': 'body', 'pattern': 'terrain', 'entity': None, 'exclude': []}, 'fields': ['found', 'force'], 'reduce': 'netforce', 'num_slots': 1, 'secondary_policy': 'first', 'track_air_time': True, 'global_frame': False, 'history_length': 0, 'debug': False}, {'name': 'self_collision', 'primary': {'mode': 'subtree', 'pattern': 'base_link', 'entity': 'robot', 'exclude': []}, 'secondary': {'mode': 'subtree', 'pattern': 'base_link', 'entity': 'robot', 'exclude': []}, 'fields': ['found', 'force'], 'reduce': 'none', 'num_slots': 1, 'secondary_policy': 'first', 'track_air_time': False, 'global_frame': False, 'history_length': 4, 'debug': False}, {'name': 'thigh_ground_touch', 'primary': {'mode': 'geom', 'pattern': ['FR_thigh_collision', 'FL_thigh_collision', 'RR_thigh_collision', 'RL_thigh_collision'], 'entity': 'robot', 'exclude': []}, 'secondary': {'mode': 'body', 'pattern': 'terrain', 'entity': None, 'exclude': []}, 'fields': ['found', 'force'], 'reduce': 'none', 'num_slots': 1, 'secondary_policy': 'first', 'track_air_time': False, 'global_frame': False, 'history_length': 4, 'debug': False}, {'name': 'shank_ground_touch', 'primary': {'mode': 'geom', 'pattern': ['FR_calf_collision', 'FL_calf_collision', 'RR_calf_collision', 'RL_calf_collision'], 'entity': 'robot', 'exclude': []}, 'secondary': {'mode': 'body', 'pattern': 'terrain', 'entity': None, 'exclude': []}, 'fields': ['found', 'force'], 'reduce': 'none', 'num_slots': 1, 'secondary_policy': 'first', 'track_air_time': False, 'global_frame': False, 'history_length': 4, 'debug': False}], 'extent': 2.0, 'spec_fn': None}, 'observations': {'actor': {'terms': {'base_lin_vel': {'func': 'mjlab.envs.mdp.observations.builtin_sensor', 'params': {'sensor_name': 'robot/frame_vel'}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -0.5, 'n_max': 0.5}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'base_ang_vel': {'func': 'mjlab.envs.mdp.observations.builtin_sensor', 'params': {'sensor_name': 'robot/imu_gyro'}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -0.2, 'n_max': 0.2}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'projected_gravity': {'func': 'mjlab.envs.mdp.observations.projected_gravity', 'params': {}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -0.05, 'n_max': 0.05}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'joint_pos': {'func': 'mjlab.envs.mdp.observations.joint_pos_rel', 'params': {'biased': True}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -0.01, 'n_max': 0.01}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'joint_vel': {'func': 'mjlab.envs.mdp.observations.joint_vel_rel', 'params': {}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -1.5, 'n_max': 1.5}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'actions': {'func': 'mjlab.envs.mdp.observations.last_action', 'params': {}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'command': {'func': 'mjlab.envs.mdp.observations.generated_commands', 'params': {'command_name': 'twist'}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}}, 'concatenate_terms': True, 'concatenate_dim': -1, 'enable_corruption': True, 'history_length': None, 'flatten_history_dim': True, 'nan_policy': 'disabled', 'nan_check_per_term': True}, 'critic': {'terms': {'base_lin_vel': {'func': 'mjlab.envs.mdp.observations.builtin_sensor', 'params': {'sensor_name': 'robot/frame_vel'}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -0.5, 'n_max': 0.5}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'base_ang_vel': {'func': 'mjlab.envs.mdp.observations.builtin_sensor', 'params': {'sensor_name': 'robot/imu_gyro'}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -0.2, 'n_max': 0.2}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'projected_gravity': {'func': 'mjlab.envs.mdp.observations.projected_gravity', 'params': {}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -0.05, 'n_max': 0.05}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'joint_pos': {'func': 'mjlab.envs.mdp.observations.joint_pos_rel', 'params': {}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'joint_vel': {'func': 'mjlab.envs.mdp.observations.joint_vel_rel', 'params': {}, 'noise': {'operation': 'add', '_tensor_cache': {}, 'n_min': -1.5, 'n_max': 1.5}, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'actions': {'func': 'mjlab.envs.mdp.observations.last_action', 'params': {}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'command': {'func': 'mjlab.envs.mdp.observations.generated_commands', 'params': {'command_name': 'twist'}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'foot_air_time': {'func': 'mjlab.tasks.velocity.mdp.observations.foot_air_time', 'params': {'sensor_name': 'feet_ground_contact'}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'foot_contact': {'func': 'mjlab.tasks.velocity.mdp.observations.foot_contact', 'params': {'sensor_name': 'feet_ground_contact'}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}, 'foot_contact_forces': {'func': 'mjlab.tasks.velocity.mdp.observations.foot_contact_forces', 'params': {'sensor_name': 'feet_ground_contact'}, 'noise': None, 'clip': None, 'scale': None, 'delay_min_lag': 0, 'delay_max_lag': 0, 'delay_per_env': True, 'delay_hold_prob': 0.0, 'delay_update_period': 0, 'delay_per_env_phase': True, 'history_length': 0, 'flatten_history_dim': True}}, 'concatenate_terms': True, 'concatenate_dim': -1, 'enable_corruption': False, 'history_length': None, 'flatten_history_dim': True, 'nan_policy': 'disabled', 'nan_check_per_term': True}}, 'actions': {'joint_pos': {'entity_name': 'robot', 'clip': None, 'transmission_type': 'JOINT', 'actuator_names': ['.*'], 'scale': {'.*thigh_joint': 0.335, '.*calf_joint': 0.335, '.*R_hip_joint': 0.335, '.*L_hip_joint': 0.335}, 'offset': 0.0, 'preserve_order': False, 'use_default_offset': True}}, 'events': {'reset_base': {'func': 'mjlab.envs.mdp.events.reset_root_state_uniform', 'params': {'pose_range': {'x': [9.0, 9.5], 'y': [-0.5, 0.5], 'z': [0.01, 0.05], 'yaw': [-3.14, 3.14]}, 'velocity_range': {}}, 'mode': 'reset', 'interval_range_s': None, 'is_global_time': False, 'min_step_count_between_reset': 0}, 'reset_robot_joints': {'func': 'mjlab.envs.mdp.events.reset_joints_by_offset', 'params': {'position_range': [0.0, 0.0], 'velocity_range': [0.0, 0.0], 'asset_cfg': {'name': 'robot', 'joint_names': ['.*'], 'joint_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'body_names': None, 'body_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'geom_names': None, 'geom_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'site_names': None, 'site_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'actuator_names': None, 'actuator_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'tendon_names': None, 'tendon_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'camera_names': None, 'camera_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'light_names': None, 'light_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'material_names': None, 'material_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'texture_names': None, 'texture_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'pair_names': None, 'pair_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'preserve_order': False}}, 'mode': 'reset', 'interval_range_s': None, 'is_global_time': False, 'min_step_count_between_reset': 0}}, 'seed': 42, 'sim': {'nconmax': 35, 'njmax': 1500, 'contact_sensor_maxmatch': 500, 'broadphase': None, 'broadphase_filter': None, 'ls_parallel': None, 'mujoco': {'timestep': 0.005, 'integrator': 'implicitfast', 'impratio': 10, 'cone': 'elliptic', 'jacobian': 'auto', 'solver': 'newton', 'iterations': 10, 'tolerance': 1e-08, 'ls_iterations': 20, 'ls_tolerance': 0.01, 'ccd_iterations': 500, 'gravity': [0.0, 0.0, -9.81], 'disableflags': ['multiccd', 'nativeccd'], 'enableflags': []}, 'nan_guard': {'enabled': False, 'buffer_size': 100, 'output_dir': '/tmp/mjlab/nan_dumps', 'max_envs_to_dump': 5}}, 'viewer': {'origin_type': 'ASSET_BODY', 'height': 240, 'width': 320, 'enable_reflections': True, 'enable_shadows': True, 'geom_group': [1, 1, 1, 0, 0, 0], 'site_group': [1, 1, 1, 0, 0, 0], 'env_idx': 0, 'max_extra_envs': 2, 'reward_bar_max_terms': 20, 'distance': 1.5, 'elevation': -10.0, 'azimuth': 90.0, 'fovy': None, 'lookat': [0.0, 0.0, 0.0], 'entity_name': 'robot', 'body_name': 'base_link'}, 'episode_length_s': 20.0, 'rewards': {'track_linear_velocity': {'func': 'mjlab.tasks.velocity.mdp.rewards.track_linear_velocity', 'params': {'command_name': 'twist', 'std': 0.5}, 'weight': 5.0}, 'track_angular_velocity': {'func': 'mjlab.tasks.velocity.mdp.rewards.track_angular_velocity', 'params': {'command_name': 'twist', 'std': 0.7071067811865476}, 'weight': 5.0}, 'upright': {'func': 'mjlab.tasks.velocity.mdp.rewards.upright', 'params': {'std': 0.4472135954999579, 'asset_cfg': {'name': 'robot', 'joint_names': None, 'joint_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'body_names': ['base_link'], 'body_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'geom_names': None, 'geom_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'site_names': None, 'site_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'actuator_names': None, 'actuator_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'tendon_names': None, 'tendon_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'camera_names': None, 'camera_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'light_names': None, 'light_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'material_names': None, 'material_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'texture_names': None, 'texture_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'pair_names': None, 'pair_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'preserve_order': False}}, 'weight': 1.0}, 'pose': {'func': 'mjlab.tasks.velocity.mdp.rewards.variable_posture', 'params': {'asset_cfg': {'name': 'robot', 'joint_names': ['.*'], 'joint_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'body_names': None, 'body_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'geom_names': None, 'geom_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'site_names': None, 'site_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'actuator_names': None, 'actuator_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'tendon_names': None, 'tendon_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'camera_names': None, 'camera_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'light_names': None, 'light_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'material_names': None, 'material_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'texture_names': None, 'texture_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'pair_names': None, 'pair_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'preserve_order': False}, 'command_name': 'twist', 'std_standing': {'.*(FR|FL|RR|RL)_(hip|thigh)_joint.*': 0.05, '.*(FR|FL|RR|RL)_calf_joint.*': 0.1}, 'std_walking': {'.*(FR|FL|RR|RL)_(hip|thigh)_joint.*': 0.3, '.*(FR|FL|RR|RL)_calf_joint.*': 0.6}, 'std_running': {'.*(FR|FL|RR|RL)_(hip|thigh)_joint.*': 0.3, '.*(FR|FL|RR|RL)_calf_joint.*': 0.6}, 'walking_threshold': 0.05, 'running_threshold': 1.5}, 'weight': 1.0}, 'body_ang_vel': {'func': 'mjlab.tasks.velocity.mdp.rewards.body_angular_velocity_penalty', 'params': {'asset_cfg': {'name': 'robot', 'joint_names': None, 'joint_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'body_names': ['base_link'], 'body_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'geom_names': None, 'geom_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'site_names': None, 'site_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'actuator_names': None, 'actuator_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'tendon_names': None, 'tendon_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'camera_names': None, 'camera_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'light_names': None, 'light_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'material_names': None, 'material_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'texture_names': None, 'texture_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'pair_names': None, 'pair_ids': {'slice_start': None, 'slice_step': None, 'slice_stop': None}, 'preserve_order': False}}, 'weight': 0.0}, 'angular_momentum': {'func': 'mjlab.tasks.velocity.mdp.rewards.angular_momentum_penalty', 'params': {'sensor_name': 'robot/root_angmom'}, 'weight': 0.0}, 'dof_pos_limits': {'func': 'mjlab.envs.mdp.rewards.joint_pos_limits', 'params': {}, 'weight': -1.0}, 'action_rate_l2': {'func': 'mjlab.envs.mdp.rewards.action_rate_l2', 'params': {}, 'weight': -0.1}, 'air_time': {'func': 'mjlab.tasks.velocity.mdp.rewards.feet_air_time', 'params': {'sensor_name': 'feet_ground_contact', 'threshold_min': 0.05, 'threshold_max': 0.5, 'command_name': 'twist', 'command_threshold': 0.5}, 'weight': 0.0}, 'soft_landing': {'func': 'mjlab.tasks.velocity.mdp.rewards.soft_landing', 'params': {'sensor_name': 'feet_ground_contact', 'command_name': 'twist', 'command_threshold': 0.05}, 'weight': -1e-05}, 'self_collisions': {'func': 'mjlab.tasks.velocity.mdp.rewards.self_collision_cost', 'params': {'sensor_name': 'self_collision'}, 'weight': -0.1}, 'shank_collision': {'func': 'mjlab.tasks.velocity.mdp.rewards.self_collision_cost', 'params': {'sensor_name': 'shank_ground_touch'}, 'weight': -0.1}}, 'terminations': {'time_out': {'func': 'mjlab.envs.mdp.terminations.time_out', 'params': {}, 'time_out': True}, 'out_of_terrain_bounds': {'func': 'mjlab.tasks.velocity.mdp.terminations.out_of_terrain_bounds', 'params': {}, 'time_out': True}, 'reached_edge': {'func': 'mjlab.tasks.velocity.mdp.terminations.terrain_edge_reached', 'params': {'threshold_fraction': 0.9}, 'time_out': True}, 'illegal_contact': {'func': 'mjlab.tasks.velocity.mdp.terminations.illegal_contact', 'params': {'sensor_name': 'thigh_ground_touch'}, 'time_out': False}}, 'commands': {'twist': {'resampling_time_range': [3.0, 8.0], 'debug_vis': True, 'entity_name': 'robot', 'heading_command': True, 'heading_control_stiffness': 2.0, 'rel_standing_envs': 0.0, 'rel_heading_envs': 1.0, 'rel_world_envs': 0.0, 'rel_forward_envs': 0.0, 'init_velocity_prob': 0.0, 'ranges': {'lin_vel_x': [-1.0, 1.0], 'lin_vel_y': [-1.0, 1.0], 'ang_vel_z': [-1.0, 1.0], 'heading': [-3.14, 3.14]}, 'viz': {'z_offset': 0.2, 'scale': 0.5}, 'forward_speed': 1.0, 'switch_steps': 200, 'terrain_size': 8.0, 'center_threshold': 0.5}}, 'curriculum': {'terrain_levels': {'func': 'mjlab.tasks.velocity.mdp.curriculums.terrain_levels_vel', 'params': {'command_name': 'twist'}}}, 'metrics': {'mean_action_acc': {'func': 'mjlab.envs.mdp.metrics.mean_action_acc', 'params': {}, 'per_substep': False, 'reduce': 'mean'}}, 'recorders': {}, 'is_finite_horizon': False, 'auto_reset': True, 'scale_rewards_by_dt': True}}
+2026-10-02 13:55:19,786 INFO    wandb-AsyncioManager-main:99896 [service_client.py:_forward_responses():80] Reached EOF.
+2026-10-02 13:55:19,786 INFO    wandb-AsyncioManager-main:99896 [mailbox.py:close():137] Closing mailbox, abandoning 1 handles.
+2026-10-02 13:55:22,418 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,421 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,422 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,423 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,426 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,428 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,429 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,430 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,432 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,433 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,434 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,434 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,435 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,436 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,436 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,437 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,437 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,438 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,438 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost
+2026-10-02 13:55:22,444 ERROR   wandb-AsyncioManager-main:99896 [asyncio_manager.py:fn_wrap_exceptions():183] Uncaught exception in run_soon callback.
+Traceback (most recent call last):
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/asyncio_manager.py", line 181, in fn_wrap_exceptions
+    await fn()
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 38, in publish
+    await self._send_server_request(request)
+  File "/home/hong/myrobot_mjlab/.venv/lib/python3.13/site-packages/wandb/sdk/lib/service/service_client.py", line 64, in _send_server_request
+    await self._writer.drain()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 386, in drain
+    await self._protocol._drain_helper()
+  File "/home/hong/.local/share/uv/python/cpython-3.13.15-linux-x86_64-gnu/lib/python3.13/asyncio/streams.py", line 166, in _drain_helper
+    raise ConnectionResetError('Connection lost')
+ConnectionResetError: Connection lost

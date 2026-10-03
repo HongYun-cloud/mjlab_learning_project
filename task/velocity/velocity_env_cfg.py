@@ -146,9 +146,9 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         params={
             "pose_range": {
             "x": (-0.5, 0.5),
-            "y": (-0.5, 0.5),
-            "z": (0.01, 0.05),
-            "yaw": (-3.14, 3.14),
+            "y": (3.5, 4.0),
+            "z": (-0.01, -0.05),
+            "yaw": (-1.57, -1.57),
             },
             "velocity_range": {},
         },
@@ -246,7 +246,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       ),
       "reached_edge": TerminationTermCfg(
         func=velocity_terminations.terrain_edge_reached,
-        params={"threshold_fraction": 0.9},
+        params={"threshold_fraction": 0.9125},
         time_out=True,
       ),
     }

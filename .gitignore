@@ -4,3 +4,12 @@ MUJOCO_LOG.TXT
 MJDATA.TXT
 MJMODEL.TXT
 mjmodel.mjb
+logs
+play
+model
+sim2sim
+test
+wandb
+train
+zippackage
+

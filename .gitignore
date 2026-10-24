@@ -1,6 +1,44 @@
+# Python
 __pycache__/
-*.pyc
-MUJOCO_LOG.TXT
-MJDATA.TXT
-MJMODEL.TXT
-mjmodel.mjb
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and experiment tracking
+logs/
+wandb/
+swanlog/
+outputs/
+runs/
+
+# Model checkpoints and exported models
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Build artifacts
+build/
+dist/

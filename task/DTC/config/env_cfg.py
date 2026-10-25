@@ -23,7 +23,7 @@ from mjlab.sensor import (
 )
 from mjlab.tasks.velocity import mdp
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
-from myrobot_mjlab.task.velocity.velocity_env_cfg import make_velocity_env_cfg
+from myrobot_mjlab.task.DTC.velocity_env_cfg import make_velocity_env_cfg
 from mjlab.scene import SceneCfg
 from mjlab.terrains import TerrainEntityCfg
 from myrobot_mjlab.config.terrain.stair_terrain import STAIRS_TERRAINS_CFG

@@ -44,6 +44,7 @@ from myrobot_mjlab.task.Tamols.fetch.go2_kinematics import (
     GO2_HIP_OFFSETS_TRUNK,
     GO2_L_HIP_SIGNS,
     go2_leg_analytical_ik_np,
+    go2_leg_forward_kinematics_np,
 )
 
 JOINT_LIMITS = {
@@ -174,3 +175,69 @@ def check_export(
                 f"leg {leg} touchdown foot z={p[2]:.4f} vs terrain {h_at:.4f}"
             )
     return violations
+
+
+def hip_jacobian_numeric(
+    q: np.ndarray, is_left: bool, eps: float = 1e-7
+) -> np.ndarray:
+    """髋系足点雅可比 J = ∂p_fk/∂q (3x3, 数值中心差分, 基于 FK 真值).
+
+    用于把 "触地时足端世界速度为零" 的约束映射为期望关节速度
+    (见 :func:`touchdown_joint_velocities`).
+    """
+    from myrobot_mjlab.task.Tamols.fetch.go2_kinematics import (
+        go2_leg_forward_kinematics_np,
+    )
+
+    q = np.asarray(q, dtype=float)
+    J = np.zeros((3, 3))
+    for k in range(3):
+        dq = np.zeros(3)
+        dq[k] = eps
+        J[:, k] = (
+            go2_leg_forward_kinematics_np(*(q + dq), is_left=is_left)
+            - go2_leg_forward_kinematics_np(*(q - dq), is_left=is_left)
+        ) / (2.0 * eps)
+    return J
+
+
+def touchdown_joint_velocities(
+    nlp: IntegratedNLP, report: SolveReport, export: TrajectoryExport
+) -> np.ndarray:
+    """触地时刻的期望关节速度 ``[4, 3]`` [rad/s] (不触地腿 NaN).
+
+    物理约束: 触地瞬间足端是**静止的支撑点** (世界系速度为零), 而基座
+    在运动, 因此关节速度由基座运动唯一决定::
+
+        0 = v_base_w + ω_w × p_off_w + R_B J_hip q̇
+        =>  q̇ = -J_hip^+ R_B^T (v_base_w + ω_w × p_off_w)
+
+    其中 ``p_off_w = R_B (hip_offset_trunk + p_fk(q_td))``, ``J_hip`` 为
+    髋系 FK 数值雅可比, ``R_B``/``ω_w`` 取触地时刻的基座姿态/角速度.
+    用最小二乘求解 (可达约束保证远离奇异). 验证: FK 闭合测试
+    (沿规划积分基座与关节, 足端世界位置不变, 见 test_rl_bridge).
+    """
+    vel = np.full((4, 3), np.nan)
+    for leg in nlp.touchdown_legs():
+        q_td = export.touchdown_joint_pos[leg]
+        if not np.isfinite(q_td).all():
+            continue
+        t_td = export.touchdown_times[leg]
+        idx = min(
+            int(np.searchsorted(export.t, t_td, side="left")),
+            len(export.t) - 1,
+        )
+        R = np.array(
+            rotation_matrix_zyx(*export.base_euler_zyx[idx])
+        )
+        v_base_w = export.base_lin_vel_w[idx]
+        w_b = export.base_ang_vel_b[idx]
+        w_w = R @ w_b
+        p_fk = go2_leg_forward_kinematics_np(
+            *q_td, is_left=GO2_L_HIP_SIGNS[leg] > 0
+        )
+        p_off_w = R @ (GO2_HIP_OFFSETS_TRUNK[leg] + np.asarray(p_fk))
+        J_hip = hip_jacobian_numeric(q_td, is_left=GO2_L_HIP_SIGNS[leg] > 0)
+        rhs = -(v_base_w + np.cross(w_w, p_off_w))
+        vel[leg] = np.linalg.lstsq(J_hip, R.T @ rhs, rcond=None)[0]
+    return vel

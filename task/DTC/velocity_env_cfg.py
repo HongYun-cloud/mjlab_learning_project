@@ -24,6 +24,9 @@ from mjlab.sensor import (
 from mjlab.sim import MujocoCfg, SimulationCfg
 from mjlab.tasks.velocity.mdp import terminations as velocity_terminations
 from mjlab.tasks.velocity import mdp
+from myrobot_mjlab.task.DTC.tamols.dtc_command import (
+  DTCFootholdCommandCfg,
+)
 from mjlab.terrains import TerrainEntityCfg
 from mjlab.terrains.config import ROUGH_TERRAINS_CFG
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
@@ -152,7 +155,18 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
             ang_vel_z=(-0.5, 0.5),
             heading=(-math.pi, math.pi),
           ),
-        )
+        ),
+        # DTC: TAMOLS 落脚点规划命令项 (继承 fetch 现有方案, 绘制走
+        # DTC debug_viz). 仅供仿真视图观测落足点与后续 obs/reward 接入,
+        # 不参与速度任务的观测/奖励; 平地变体无 terrain_scan 时命令项
+        # 内部容错 (足点退化为平地 z=0).
+        "Tamols_footholds": DTCFootholdCommandCfg(
+          entity_name="robot",
+          sensor_name="terrain_scan",
+          debug_vis=True,
+          dot_radius=0.035,
+          show_nominal_dots=True,
+        ),
       }
 
     ##

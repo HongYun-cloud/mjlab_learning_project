@@ -13,6 +13,13 @@
 - TAMOLS 每只脚触地重规划, stride 0.93 s, map cell 0.04 m;
 - 终止条件为 base 接触地形 (论文), 不加 goal/stop/last-2s。
 
+同一个函数提供 stair / flat 两种地形, 除地形与 reset/边界外所有
+observation、reward、gait、TAMOLS 参数完全一致, 用于验证同一策略在
+flat → stair 上的迁移:
+
+- ``terrain="stair"``: 当前楼梯 baseline;
+- ``terrain="flat"``: 平地 baseline, 先训练/验证新 116 维 DTC 接口。
+
 注意: 当前 active planner 仍是 task/Tamols/fetch 的轻量
 TorchTAMOLSMotionPlanner. 完整 IntegratedNLP/GN-SQP 的接入是下一步单独
 工作; 本文件先把 policy 侧和训练信号对齐论文, 便于做 A/B。
@@ -22,6 +29,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from typing import Literal
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs import mdp as envs_mdp
@@ -46,19 +54,22 @@ from myrobot_mjlab.task.DTC.observation import terms as dtc_obs
 from myrobot_mjlab.task.DTC.tamols.dtc_command import DTCFootholdCommandCfg
 
 
-def my_go2_dtc_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+def my_go2_dtc_baseline_env_cfg(
+    play: bool = False,
+    terrain: Literal["stair", "flat"] = "stair",
+) -> ManagerBasedRlEnvCfg:
     cfg = my_go2_rough_env_cfg(play=play)
 
-    # ---- terrain: DTC 论文式连续地形训练 (这里先用 stairs 做 A/B) ----
-    cfg.scene.terrain = TerrainEntityCfg(
-        terrain_type="generator",
-        terrain_generator=replace(STAIRS_TERRAINS_CFG),
-        max_init_terrain_level=0,
-    )
-    # Same reset as the stair task: spawn in the center hollow, random yaw;
-    # velocity commands decide where to go. No goal/reached-peak termination.
-    cfg.events = {
-        "reset_base": EventTermCfg(
+    # ---- terrain + reset: stair (A/B) or plane (flat baseline) ----
+    if terrain == "stair":
+        cfg.scene.terrain = TerrainEntityCfg(
+            terrain_type="generator",
+            terrain_generator=replace(STAIRS_TERRAINS_CFG),
+            max_init_terrain_level=0,
+        )
+        # Spawn in the center hollow, random yaw; velocity commands decide
+        # where to go. No goal/reached-peak termination.
+        reset_base = EventTermCfg(
             func=reset_root_state_from_stair,
             mode="reset",
             params={
@@ -71,7 +82,30 @@ def my_go2_dtc_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
                 "velocity_range": {},
                 "nominal_height": 0.28,
             },
-        ),
+        )
+    elif terrain == "flat":
+        cfg.scene.terrain = TerrainEntityCfg(terrain_type="plane")
+        # 平地没有 terrain generator, 不能跑楼梯的 terrain-level 课程.
+        cfg.curriculum = {}
+        reset_base = EventTermCfg(
+            func=mdp.reset_root_state_uniform,
+            mode="reset",
+            params={
+                "pose_range": {
+                    "x": (-0.5, 0.5),
+                    "y": (-0.5, 0.5),
+                    "z": (0.0, 0.0),
+                    "yaw": (-math.pi, math.pi),
+                },
+                "velocity_range": {},
+                "asset_cfg": SceneEntityCfg("robot"),
+            },
+        )
+    else:
+        raise ValueError(f"unknown terrain {terrain!r}, expected 'stair' or 'flat'")
+
+    cfg.events = {
+        "reset_base": reset_base,
         "reset_robot_joints": EventTermCfg(
             func=mdp.reset_joints_by_offset,
             mode="reset",
@@ -83,7 +117,7 @@ def my_go2_dtc_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         ),
     }
 
-    # ---- termination: base contact (paper), plus training patch bounds ----
+    # ---- termination: base contact (paper), plus stair patch bounds ----
     base_contact = ContactSensorCfg(
         name="base_ground_contact",
         primary=ContactMatch(mode="body", pattern="base_link", entity="robot"),
@@ -95,16 +129,18 @@ def my_go2_dtc_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     cfg.scene.sensors = tuple(cfg.scene.sensors or ()) + (base_contact,)
     cfg.terminations = {
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
-        "out_of_patch_bounds": TerminationTermCfg(
-            func=out_of_patch_bounds,
-            time_out=True,
-            params={"half_size": 4.0, "margin": 0.1},
-        ),
         "base_contact": TerminationTermCfg(
             func=mdp.illegal_contact,
             params={"sensor_name": base_contact.name},
         ),
     }
+    if terrain == "stair":
+        # 楼梯 patch 8x8 m; 离开自己的 patch 即终止.
+        cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
+            func=out_of_patch_bounds,
+            time_out=True,
+            params={"half_size": 4.0, "margin": 0.1},
+        )
 
     # ---- velocity command: reference twist, no goal target ----
     twist_cmd = cfg.commands["twist"]
@@ -239,3 +275,14 @@ def my_go2_dtc_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         cfg.episode_length_s = 20.0
 
     return cfg
+
+
+def my_go2_dtc_baseline_flat_env_cfg(
+    play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+    """平地版 DTC baseline: 与 stair baseline 共用全部 observation/reward/gait.
+
+    只替换 terrain (plane)、reset (uniform) 和终止 (去掉 stair patch 边界):
+    用来先验证 116 维 DTC 接口能在平地正常走, 再把同一配置平移到 stairs。
+    """
+    return my_go2_dtc_baseline_env_cfg(play=play, terrain="flat")

@@ -34,43 +34,63 @@ class TestDTCVelocityCfg(unittest.TestCase):
     def test_dtc_baseline_paper_interface(self):
         from myrobot_mjlab.task.DTC.config.dtc_baseline import (
             my_go2_dtc_baseline_env_cfg,
+            my_go2_dtc_baseline_flat_env_cfg,
         )
 
-        cfg = my_go2_dtc_baseline_env_cfg(play=False)
-        actor = cfg.observations["actor"].terms
-        critic = cfg.observations["critic"].terms
-        self.assertIn("tamols_footholds_xy", actor)
-        self.assertIn("tamols_time_left", actor)
-        self.assertIn("tamols_path_height", actor)
-        self.assertNotIn("height_scan", actor)
-        self.assertNotIn("tamols_gait_phase", actor)
-        self.assertIn("tamols_base_lin_acc_desired", critic)
-        self.assertIn("tamols_base_ang_acc_desired", critic)
-        # Paper gesture/main reward set, no custom goal/air-time/foot clearance.
-        for key in ("air_time", "upright", "pose", "foot_swing_height",
-                    "reach_peak_bonus", "stall_penalty"):
-            self.assertNotIn(key, cfg.rewards)
-        self.assertAlmostEqual(
-            cfg.rewards["base_pose_tracking_pos"].params["sigma"], 1200.0
+        variants = (
+            ("stair", my_go2_dtc_baseline_env_cfg, "generator"),
+            ("flat", my_go2_dtc_baseline_flat_env_cfg, "plane"),
         )
-        self.assertAlmostEqual(
-            cfg.rewards["base_pose_tracking_rot"].params["sigma"], 90.0
-        )
-        self.assertAlmostEqual(
-            cfg.rewards["base_pose_tracking_acc_pos"].params["sigma"], 0.05
-        )
-        self.assertAlmostEqual(
-            cfg.rewards["base_pose_tracking_acc_rot"].params["sigma"], 0.005
-        )
-        self.assertAlmostEqual(
-            cfg.rewards["action_consistency"].weight, 20.0
-        )
-        self.assertAlmostEqual(cfg.rewards["joint_power"].weight, 0.025)
-        foothold_cmd = cfg.commands["Tamols_footholds"]
-        self.assertTrue(foothold_cmd.replan_per_foot_touchdown)
-        self.assertAlmostEqual(foothold_cmd.gait_cfg.stride_duration, 0.93)
-        self.assertAlmostEqual(foothold_cmd.cell_size, 0.04)
-        self.assertIn("base_contact", cfg.terminations)
+        for name, factory, terrain_type in variants:
+            with self.subTest(name=name):
+                cfg = factory(play=False)
+                self.assertEqual(cfg.scene.terrain.terrain_type, terrain_type)
+                actor = cfg.observations["actor"].terms
+                critic = cfg.observations["critic"].terms
+                self.assertIn("tamols_footholds_xy", actor)
+                self.assertIn("tamols_time_left", actor)
+                self.assertIn("tamols_path_height", actor)
+                self.assertNotIn("height_scan", actor)
+                self.assertNotIn("tamols_gait_phase", actor)
+                self.assertIn("tamols_base_lin_acc_desired", critic)
+                self.assertIn("tamols_base_ang_acc_desired", critic)
+                # Paper gesture/main reward set, no custom goal/air-time/foot
+                # clearance.
+                for key in (
+                    "air_time",
+                    "upright",
+                    "pose",
+                    "foot_swing_height",
+                    "reach_peak_bonus",
+                    "stall_penalty",
+                ):
+                    self.assertNotIn(key, cfg.rewards)
+                self.assertAlmostEqual(
+                    cfg.rewards["base_pose_tracking_pos"].params["sigma"], 1200.0
+                )
+                self.assertAlmostEqual(
+                    cfg.rewards["base_pose_tracking_rot"].params["sigma"], 90.0
+                )
+                self.assertAlmostEqual(
+                    cfg.rewards["base_pose_tracking_acc_pos"].params["sigma"], 0.05
+                )
+                self.assertAlmostEqual(
+                    cfg.rewards["base_pose_tracking_acc_rot"].params["sigma"], 0.005
+                )
+                self.assertAlmostEqual(
+                    cfg.rewards["action_consistency"].weight, 20.0
+                )
+                self.assertAlmostEqual(cfg.rewards["joint_power"].weight, 0.025)
+                foothold_cmd = cfg.commands["Tamols_footholds"]
+                self.assertTrue(foothold_cmd.replan_per_foot_touchdown)
+                self.assertAlmostEqual(foothold_cmd.gait_cfg.stride_duration, 0.93)
+                self.assertAlmostEqual(foothold_cmd.cell_size, 0.04)
+                self.assertIn("base_contact", cfg.terminations)
+                if name == "stair":
+                    self.assertIn("out_of_patch_bounds", cfg.terminations)
+                else:
+                    self.assertNotIn("out_of_patch_bounds", cfg.terminations)
+                    self.assertEqual(cfg.curriculum, {})
 
     def test_stair_uses_target_direction_and_in_place_gait(self):
         from myrobot_mjlab.task.DTC.config.env_cfg import my_go2_stair_env_cfg
@@ -360,6 +380,7 @@ class TestDTCRegistration(unittest.TestCase):
             "Mjlab-DTC-Velocity-Flat-Unitree-Go2",
             "Mjlab-DTC-Velocity-StairFromFlat-Unitree-Go2",
             "Mjlab-DTC-Velocity-StairDTCBaseline-Unitree-Go2",
+            "Mjlab-DTC-Velocity-FlatDTCBaseline-Unitree-Go2",
             "Mjlab-DTC-Velocity-TireArray-Unitree-Go2",
         ):
             self.assertIn(expected, tasks)

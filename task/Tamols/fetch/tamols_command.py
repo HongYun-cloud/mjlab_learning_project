@@ -78,7 +78,13 @@ class TamolsMotionCommandCfg(CommandTermCfg):
     的瞬间) 才重规划一次, 任何重规划 (含指令突变/重置触发) 后清零。
     计划在周期内完全冻结, 摆动腿落点绝不在空中被改写; 对指令突变的响应
     由 replan_on_command_change 即时触发兜底。设 False 时每对对角腿
-    (FL+RR / FR+RL) 都落地一次就重规划一次 (每周期两次)。"""
+    (FL+RR / FR+RL) 都落地一次就重规划一次 (每周期两次)。
+    设 ``replan_per_foot_touchdown=True`` 时退化为任意一条腿触地就重规划
+    (DTC 论文的“mainly after each foot touch-down”频率)。"""
+
+    replan_per_foot_touchdown: bool = False
+    """True: 任意单腿触地就重规划; 优先级高于上面的 pair 模式。
+    DTC 论文使用该频率; 当前自定楼梯任务保持 pair 模式。"""
 
     replan_on_command_change: bool = True
     """当目标航向或速度指令发生显著改变时触发重新计算"""
@@ -699,7 +705,10 @@ class TamolsMotionCommand(CommandTerm):
             replan_mask = ~self.footholds_initialized
             if self.cfg.replan_on_touchdown:
                 touchdown = (prev_contacts < 0.5) & (curr_contacts > 0.5)
-                if self.cfg.replan_after_all_four_touchdowns:
+                if self.cfg.replan_per_foot_touchdown:
+                    # DTC 论文: 任意单腿触地就更新一次.
+                    replan_mask |= torch.any(touchdown, dim=-1)
+                elif self.cfg.replan_after_all_four_touchdowns:
                     # 四条腿都各自落过一次地 (整周期) 才重规划一次
                     self._td_since_replan |= touchdown
                     replan_mask |= self._td_since_replan.all(dim=-1)

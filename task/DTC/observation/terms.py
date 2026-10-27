@@ -200,3 +200,99 @@ def tamols_base_twist_desired(
         ),
         dim=-1,
     )
+
+
+# ---------------------------------------------------------------------- #
+# DTC 论文对齐用观测 (planar footholds / time-left / foot→foothold scan)
+# ---------------------------------------------------------------------- #
+def tamols_footholds_xy(
+    env,
+    command_name: str = "Tamols_footholds",
+    entity_name: str = "robot",
+) -> torch.Tensor:
+    """TAMOLS 规划落脚点的**机体系平面坐标** [N,8] (FL/FR/RL/RR 的 x,y).
+
+    与 :func:`tamols_footholds` 的区别: DTC 论文只把 planar footholds
+    给 actor, z 由 foot→foothold 高度扫描提供; 不再把 z 直接混进落点.
+    """
+    term = _command_term(env, command_name)
+    asset = env.scene[entity_name]
+    footholds = term.optimal_footholds
+    rel = footholds[:, :, :2] - asset.data.root_link_pos_w[:, None, :2]
+    yaw = _base_yaw(asset)
+    cos, sin = torch.cos(yaw), torch.sin(yaw)
+    bx = cos[:, None] * rel[..., 0] + sin[:, None] * rel[..., 1]
+    by = -sin[:, None] * rel[..., 0] + cos[:, None] * rel[..., 1]
+    return torch.stack((bx, by), dim=-1).reshape(footholds.shape[0], 8)
+
+
+def tamols_time_left(
+    env,
+    command_name: str = "Tamols_footholds",
+) -> torch.Tensor:
+    """当前相位剩余时间 [N,4] (秒), 对应 DTC 论文的 time-left observation."""
+    term = _command_term(env, command_name)
+    return term.gait_scheduler.time_left
+
+
+def tamols_path_height(
+    env,
+    command_name: str = "Tamols_footholds",
+) -> torch.Tensor:
+    """当前脚→落点直线上的地形高度采样 [N,4*S].
+
+    DTC 论文不构造 base 周围高程图, 而是沿每条腿的摆动路径采样高度.
+    数据来自 ``DTCFootholdCommand.swing_obs['path_rel_h']`` (相对当前
+    脚高度), 由 shared gait/TAMOLS 落点计算; S =
+    ``command_cfg.swing_path_samples``.
+    """
+    term = _command_term(env, command_name)
+    path = getattr(term, "swing_obs", None)
+    n = term.num_envs
+    if path is None:
+        samples = int(getattr(term.cfg, "swing_path_samples", 5))
+        return torch.zeros((n, 4 * samples), device=term.device)
+    rel = path["path_rel_h"]
+    return rel.reshape(n, -1)
+
+
+def tamols_base_lin_acc_desired(
+    env,
+    command_name: str = "Tamols_footholds",
+    entity_name: str = "robot",
+) -> torch.Tensor:
+    """TAMOLS 期望基座线加速度 (机体系) [N,3] — critic 特权量."""
+    term = _command_term(env, command_name)
+    asset = env.scene[entity_name]
+    yaw = _base_yaw(asset)
+    cos, sin = torch.cos(yaw), torch.sin(yaw)
+    v = term.desired_base_lin_acc_w
+    return torch.stack(
+        (
+            cos * v[:, 0] + sin * v[:, 1],
+            -sin * v[:, 0] + cos * v[:, 1],
+            v[:, 2],
+        ),
+        dim=-1,
+    )
+
+
+def tamols_base_ang_acc_desired(
+    env,
+    command_name: str = "Tamols_footholds",
+    entity_name: str = "robot",
+) -> torch.Tensor:
+    """TAMOLS 期望基座角加速度 (机体系) [N,3] — critic 特权量."""
+    term = _command_term(env, command_name)
+    asset = env.scene[entity_name]
+    yaw = _base_yaw(asset)
+    cos, sin = torch.cos(yaw), torch.sin(yaw)
+    v = term.desired_base_ang_acc_w
+    return torch.stack(
+        (
+            cos * v[:, 0] + sin * v[:, 1],
+            -sin * v[:, 0] + cos * v[:, 1],
+            v[:, 2],
+        ),
+        dim=-1,
+    )

@@ -77,6 +77,9 @@ class TestDTCVelocityCfg(unittest.TestCase):
                 self.assertAlmostEqual(
                     cfg.rewards["base_pose_tracking_acc_rot"].params["sigma"], 0.005
                 )
+                self.assertTrue(
+                    cfg.rewards["base_pose_tracking_pos"].params["squared"]
+                )
                 self.assertAlmostEqual(
                     cfg.rewards["action_consistency"].weight, 20.0
                 )

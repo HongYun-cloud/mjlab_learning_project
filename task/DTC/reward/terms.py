@@ -211,8 +211,9 @@ def base_pose_tracking(
     command_name: str = "Tamols_footholds",
     entity_name: str = "robot",
     rot_weight: float = 1.0,
+    squared: bool = False,
 ) -> torch.Tensor:
-    """``r_{B_n} = exp(-sigma || b*(t+dt) ⊖ b(t) ||_2)``.
+    """``r_{B_n} = exp(-sigma || b*(t+dt) ⊖ b(t) ||_2^2)``.
 
     Args:
       sigma: ``sigma_{B_n}``; cfg 中分多个 reward 项各配各的.
@@ -224,6 +225,9 @@ def base_pose_tracking(
       command_name: TAMOLS 命令项 (期望参考来源).
       rot_weight: 角误差与平移误差的量纲平衡 (仅 component="both"
         时有意义; 默认 1.0).
+      squared: 是否使用论文的平方范数 ``||e||^2``. 论文 Table 的
+        σ=1200/90/10/... 是按平方误差标定的; 旧任务使用非平方范数
+        并手动把 σ 调小. 新 DTC baseline 应设为 True.
     """
     if order not in (0, 1, 2):
         raise ValueError(f"order 需为 0/1/2, 实际 {order}")
@@ -264,6 +268,11 @@ def base_pose_tracking(
         err = ang
     else:
         err = torch.cat((lin, rot_weight * ang), dim=-1)
+    if squared:
+        # 论文式: exp(-σ ||e||²). 非平方版本在 σ=1200 时对 cm 级
+        # 误差已经 underflow 到 0, 会让整个 base-pose 奖励失去梯度.
+        norm_sq = err.square().sum(dim=-1)
+        return torch.exp(-float(sigma) * norm_sq)
     return torch.exp(-float(sigma) * err.norm(dim=-1))
 
 

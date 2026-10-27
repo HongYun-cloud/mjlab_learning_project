@@ -247,6 +247,9 @@ def my_go2_dtc_baseline_env_cfg(
         term.params["sigma"] = sigma
         term.params["order"] = order
         term.params["component"] = component
+        # 论文公式使用 exp(-σ ||e||²); Table 的 σ=1200/90/... 只在这个
+        # 平方范数下有意义. 非平方版本会让位置/姿态奖励恒为 0.
+        term.params["squared"] = True
         term.weight = weight
 
     foot = cfg.rewards.get("foothold_hard_tracking")

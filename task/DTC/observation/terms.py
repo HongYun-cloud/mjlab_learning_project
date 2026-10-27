@@ -243,8 +243,8 @@ def tamols_path_height(
 
     DTC 论文不构造 base 周围高程图, 而是沿每条腿的摆动路径采样高度.
     数据来自 ``DTCFootholdCommand.swing_obs['path_rel_h']`` (相对当前
-    脚高度), 由 shared gait/TAMOLS 落点计算; S =
-    ``command_cfg.swing_path_samples``.
+    脚高度), 取反后表示“脚高于地形”的高度, 对齐论文 zi,j = f_i,j - h_i,j;
+    S = ``command_cfg.swing_path_samples``.
     """
     term = _command_term(env, command_name)
     path = getattr(term, "swing_obs", None)
@@ -252,7 +252,9 @@ def tamols_path_height(
     if path is None:
         samples = int(getattr(term.cfg, "swing_path_samples", 5))
         return torch.zeros((n, 4 * samples), device=term.device)
-    rel = path["path_rel_h"]
+    # DTC 论文的 exteroceptive 高度是 z = foot_z - terrain_z (脚相对地形
+    # 的高度); swing_obs 里存的是 terrain_z - foot_z, 这里取反对齐符号.
+    rel = -path["path_rel_h"]
     return rel.reshape(n, -1)
 
 

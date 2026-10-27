@@ -274,3 +274,93 @@ def terrain_levels_reach_target(
     return result
 
 
+
+
+def terrain_levels_stair_peak(
+    env,
+    env_ids,
+    command_name: str = "twist",
+    up_streak: int = 5,
+    down_streak: int = 3,
+) -> dict:
+    """楼梯课程: 连续 ``up_streak`` 次到达楼梯顶端升一级, 连续 ``down_streak``
+    次未到达降一级 (DTC 楼梯任务专用)。
+
+    成败判据
+    --------
+    读速度命令项 (StairVelocityCommand, north_peak 模式) 的
+    ``peak_reached_episode``: 本 episode 是否曾到达楼梯顶端 (目标点半径
+    center_threshold 内)。配合 "reached_peak" 成功终止 (到顶即结束) 与
+    10 s 超时终止 (未到顶结束), 每个 episode 恰好产生一次成败判定。
+
+    升降规则
+    --------
+    - 连续 ``up_streak`` (默认 5) 个成功 episode -> 难度 +1 级;
+    - 连续 ``down_streak`` (默认 3) 个失败 episode -> 难度 -1 级;
+    - 升级或降级后该环境的成败计数清零, 重新开始统计;
+    - 初次 reset (common_step_counter == 0) 冻结, 避免出生即误判。
+
+    底层调用 :meth:`TerrainEntity.update_env_origins` 更新 terrain_levels 与
+    env_origins (到顶 max_terrain_level 后随机重置等级)。
+    """
+    if len(env_ids) == 0:
+        return {}
+
+    device = env.device
+    cmd = env.command_manager.get_term(command_name)
+    reached = getattr(cmd, "peak_reached_episode", None)
+    if reached is None:
+        reached = torch.zeros(env.num_envs, dtype=torch.bool, device=device)
+
+    if not hasattr(env, "stair_peak_success_streak"):
+        env.stair_peak_success_streak = torch.zeros(
+            env.num_envs, dtype=torch.long, device=device
+        )
+        env.stair_peak_fail_streak = torch.zeros(
+            env.num_envs, dtype=torch.long, device=device
+        )
+
+    ok = reached[env_ids].bool()
+    env.stair_peak_success_streak[env_ids] = torch.where(
+        ok, env.stair_peak_success_streak[env_ids] + 1,
+        torch.zeros_like(env.stair_peak_success_streak[env_ids]),
+    )
+    env.stair_peak_fail_streak[env_ids] = torch.where(
+        ok, torch.zeros_like(env.stair_peak_fail_streak[env_ids]),
+        env.stair_peak_fail_streak[env_ids] + 1,
+    )
+
+    move_up = env.stair_peak_success_streak[env_ids] >= up_streak
+    move_down = (env.stair_peak_fail_streak[env_ids] >= down_streak) & ~move_up
+
+    # 初次 reset 时机器人还没走过任何 episode, 冻结升降
+    if env.common_step_counter == 0:
+        move_up = torch.zeros_like(move_up)
+        move_down = torch.zeros_like(move_down)
+
+    # 升/降级后重新开始计数
+    changed = move_up | move_down
+    if changed.any():
+        env.stair_peak_success_streak[env_ids[changed]] = 0
+        env.stair_peak_fail_streak[env_ids[changed]] = 0
+
+    terrain = env.scene.terrain
+    has_levels = (
+        terrain is not None
+        and getattr(terrain, "terrain_origins", None) is not None
+    )
+    if has_levels:
+        terrain.update_env_origins(env_ids, move_up, move_down)
+
+    result: dict = {
+        "reach_rate": ok.float().mean(),
+        "move_up_rate": move_up.float().mean(),
+        "move_down_rate": move_down.float().mean(),
+        "success_streak_mean": env.stair_peak_success_streak[env_ids].float().mean(),
+        "fail_streak_mean": env.stair_peak_fail_streak[env_ids].float().mean(),
+    }
+    if has_levels and getattr(terrain, "terrain_levels", None) is not None:
+        levels = terrain.terrain_levels.float()
+        result["mean"] = torch.mean(levels)
+        result["max"] = torch.max(levels)
+    return result

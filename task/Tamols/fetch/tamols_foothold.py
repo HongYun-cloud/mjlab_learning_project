@@ -58,6 +58,22 @@ class TAMOLSOptimizerCfg:
     k_velocity: float = 0.05
     """Velocity feedback gain for Raibert heuristic."""
 
+    nominal_cmd_blend: float = 1.0
+    """标称落脚点前馈速度的命令权重 (0..1)。
+
+    ``1.0`` = 完全使用速度指令 (原行为); ``0.0`` = 完全使用实测基座速度。
+    楼梯上策略实际速度通常明显低于指令 (1.0 m/s 指令、实测 0.5~0.7 m/s),
+    若仍按指令前馈, 落点会被系统性地放到脚够不到的前方。取 0.5 时
+    标称落点介于两者之间, 既保留一点前馈又不会超出腿的可达范围。
+    """
+
+    max_step_offset: float = 0.0
+    """标称落点相对髋部的最大水平步幅 (m); ``<=0`` 关闭限幅。
+
+    以 Go2 站立高度 ``h_des=0.28``、腿长 0.4 m 计算, 水平可达约 0.29 m;
+    考虑抬腿后可达 0.34~0.36 m。楼梯建议 0.30~0.35, 防止规划点落在
+    腿完全伸直也够不到的位置。"""
+
 
 class TAMOLSFootholdPlanner:
     """TAMOLS-based expected foothold planner.
@@ -132,6 +148,8 @@ class TAMOLSFootholdPlanner:
         cmd_vy = float(cmd_vel_b[1]) if len(cmd_vel_b) > 1 else 0.0
 
         omega_z = float(base_ang_vel_w[2]) if base_ang_vel_w is not None else 0.0
+        alpha = float(np.clip(self.cfg.nominal_cmd_blend, 0.0, 1.0))
+        max_step = float(self.cfg.max_step_offset)
 
         nominal_w = np.zeros((4, 3), dtype=np.float32)
         for i in range(4):
@@ -148,9 +166,22 @@ class TAMOLSFootholdPlanner:
             cmd_i_x = cmd_vx + cmd_rot_x
             cmd_i_y = cmd_vy + cmd_rot_y
 
+            # 前馈速度 = 指令速度与实测速度的加权混合; alpha=1 时退化为原行为.
+            v_feed_x = alpha * cmd_i_x + (1.0 - alpha) * v_i_x
+            v_feed_y = alpha * cmd_i_y + (1.0 - alpha) * v_i_y
+
             # Raibert step offset per leg (lead[i] = 距该腿下次触地时间 + 半个支撑相)
-            delta_x = lead[i] * cmd_i_x + self.cfg.k_velocity * (v_i_x - cmd_i_x)
-            delta_y = lead[i] * cmd_i_y + self.cfg.k_velocity * (v_i_y - cmd_i_y)
+            delta_x = lead[i] * v_feed_x + self.cfg.k_velocity * (v_i_x - v_feed_x)
+            delta_y = lead[i] * v_feed_y + self.cfg.k_velocity * (v_i_y - v_feed_y)
+
+            # 限制相对髋部的水平步幅, 避免落点超出腿的可达范围 (v*lead 过大时).
+            if max_step > 0.0:
+                norm = math.hypot(delta_x, delta_y)
+                if norm > max_step:
+                    scale = max_step / max(norm, 1e-9)
+                    delta_x *= scale
+                    delta_y *= scale
+
             step_offset_b = np.array([delta_x, delta_y, -self.cfg.h_des], dtype=np.float32)
 
             foot_b = hip_b + step_offset_b
@@ -392,8 +423,19 @@ class TorchTAMOLSFootholdPlanner(nn.Module):
         cmd_i_y = cmd_vy.unsqueeze(1) + cmd_rot_y
 
         # Raibert step offset (lead = 距该腿下次触地时间 + 半个支撑相)
-        delta_x = lead * cmd_i_x + self.cfg.k_velocity * (v_i_x - cmd_i_x)
-        delta_y = lead * cmd_i_y + self.cfg.k_velocity * (v_i_y - cmd_i_y)
+        alpha = float(min(max(self.cfg.nominal_cmd_blend, 0.0), 1.0))
+        v_feed_x = alpha * cmd_i_x + (1.0 - alpha) * v_i_x
+        v_feed_y = alpha * cmd_i_y + (1.0 - alpha) * v_i_y
+        delta_x = lead * v_feed_x + self.cfg.k_velocity * (v_i_x - v_feed_x)
+        delta_y = lead * v_feed_y + self.cfg.k_velocity * (v_i_y - v_feed_y)
+
+        # 限制标称落点相对髋部的水平步幅 (运动学可达范围).
+        max_step = float(self.cfg.max_step_offset)
+        if max_step > 0.0:
+            norm = torch.sqrt(delta_x * delta_x + delta_y * delta_y).clamp(min=1e-9)
+            scale = torch.clamp(max_step / norm, max=1.0)
+            delta_x = delta_x * scale
+            delta_y = delta_y * scale
 
         foot_b_x = hip_b[..., 0] + delta_x
         foot_b_y = hip_b[..., 1] + delta_y

@@ -9,9 +9,7 @@ from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.actuator import BuiltinPositionActuatorCfg
 
 
-GO2_XML = Path(
-    "myrobot/go2/go2.xml"
-)
+GO2_XML = Path(__file__).resolve().parent / "myrobot/go2/go2.xml"
 
 
 def get_spec() -> mujoco.MjSpec:

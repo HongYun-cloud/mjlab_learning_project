@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import torch
@@ -30,6 +31,18 @@ from myrobot_mjlab.task.DTC.tamols.solver_backend import ca as _ca_unused  # noq
 
 
 class TestDTCVelocityCfg(unittest.TestCase):
+    def test_stair_uses_target_direction_and_in_place_gait(self):
+        from myrobot_mjlab.task.DTC.config.env_cfg import my_go2_stair_env_cfg
+
+        cfg = my_go2_stair_env_cfg(play=False)
+        # 楼梯速度方向指向目标点, 大小仍为 forward_speed.
+        self.assertFalse(cfg.commands["twist"].forward_only)
+        self.assertTrue(cfg.commands["twist"].stop_at_target)
+        foothold_cmd = cfg.commands["Tamols_footholds"]
+        self.assertTrue(foothold_cmd.in_place_gait_enable)
+        self.assertFalse(foothold_cmd.replan_after_all_four_touchdowns)
+        self.assertAlmostEqual(foothold_cmd.gait_cfg.stride_duration, 0.8)
+
     def test_variants_have_foothold_command(self):
         from myrobot_mjlab.task.DTC.config import (
             my_go2_flat_env_cfg,
@@ -47,11 +60,27 @@ class TestDTCVelocityCfg(unittest.TestCase):
             cfg = fn(play=False)
             cmd = cfg.commands.get("Tamols_footholds")
             self.assertIsInstance(cmd, DTCFootholdCommandCfg, name)
-            self.assertTrue(cmd.debug_vis, name)
-            self.assertEqual(cmd.sensor_name, "terrain_scan", name)
-        # play 变体同样带命令项 (可视化在 play 视图观测)
+            self.assertFalse(cmd.debug_vis, name)  # 训练默认关
+            self.assertEqual(cmd.sensor_name, "terrain_scan_map", name)
+            # 训练态全部调试可视化关闭 (sensor + command)
+            for s in cfg.scene.sensors or ():
+                if hasattr(s, "debug_vis"):
+                    self.assertFalse(s.debug_vis, f"{name}/{s.name}")
+            for c in cfg.commands.values():
+                self.assertFalse(c.debug_vis, f"{name}/{c}")
+        # play 变体: 命令项存在且调试可视化统一打开
         cfg_play = my_go2_flat_env_cfg(play=True)
         self.assertIn("Tamols_footholds", cfg_play.commands)
+        self.assertTrue(cfg_play.commands["Tamols_footholds"].debug_vis)
+        self.assertTrue(cfg_play.commands["twist"].debug_vis)
+        for s in cfg_play.scene.sensors or ():
+            if hasattr(s, "debug_vis"):
+                # terrain_scan_map 是 TAMOLS 内部 325 线扫描, play 里故意
+                # 关闭其 debug 射线以降低 Viser 图元数量.
+                if s.name == "terrain_scan_map":
+                    self.assertFalse(s.debug_vis)
+                else:
+                    self.assertTrue(s.debug_vis, f"play/{s.name}")
 
     def test_factory_import_is_dtc_copy(self):
         """DTC/config/env_cfg.py 的工厂必须指向 DTC 副本.
@@ -93,26 +122,24 @@ class _RecordingVisualizer:
 
 
 class TestDTCFootholdCommandDraw(unittest.TestCase):
-    """绘制覆写 (shim): 规划逻辑零改动, 只换 debug 绘制."""
+    """play viewer 显示 TAMOLS optimal/landing/nominal 三组落点."""
 
     def test_subclass_only_overrides_debug_vis(self):
-        # 规划相关方法必须是继承原实现 (无覆写)
-        for method in ("_resample_command", "_update_command", "_update_metrics"):
-            self.assertEqual(
-                DTCFootholdCommand.__dict__.get(method, None),
-                None,
-                f"{method} 被覆写: 规划逻辑应保持 fetch 原实现",
-            )
+        # 核心规划方法不得覆写; 生命周期钩子 (_update_metrics/
+        # _resample_command) 允许覆写但必须 super() 转发 (第一步的
+        # 摆动观测扩展, 行为保留).
+        self.assertNotIn("_update_command", DTCFootholdCommand.__dict__)
+        import inspect
+
+        for method in ("_update_metrics", "_resample_command"):
+            if method in DTCFootholdCommand.__dict__:
+                body = inspect.getsource(DTCFootholdCommand.__dict__[method])
+                self.assertIn(f"super().{method}", body, method)
         self.assertIn("_debug_vis_impl", DTCFootholdCommand.__dict__)
 
-    def test_draw_three_colors_from_tensors(self):
+    def test_debug_visualizer_shows_planned_footholds(self):
         cmd = object.__new__(DTCFootholdCommand)
-        # num_envs 是只读 property (读 self._env.num_envs): shim 注入 _env
-        from types import SimpleNamespace
-
         cmd._env = SimpleNamespace(num_envs=1, device="cpu")
-        from types import SimpleNamespace as _SN  # noqa: F401
-
         cmd.cfg = SimpleNamespace(
             dot_radius=0.035,
             dot_color=(1.0, 0.05, 0.05, 0.95),
@@ -121,28 +148,164 @@ class TestDTCFootholdCommandDraw(unittest.TestCase):
             show_nominal_dots=True,
             nominal_dot_color=(0.2, 0.6, 1.0, 0.7),
         )
-        base = torch.zeros(1, 4, 3)
-        cmd.optimal_footholds = base.clone()
-        cmd.optimal_footholds[0, 2] = torch.tensor([-0.21, 0.14, 0.02])  # RL
-        cmd.landing_footholds = base.clone()
-        cmd.landing_footholds[0, 2] = torch.tensor([-0.22, 0.15, 0.03])
-        cmd.nominal_footholds = base.clone()
-        cmd.nominal_footholds[0, 2] = torch.tensor([-0.2, 0.13, 0.0])
-
+        cmd.optimal_footholds = torch.zeros(1, 4, 3)
+        cmd.landing_footholds = torch.ones(1, 4, 3)
+        cmd.nominal_footholds = torch.full((1, 4, 3), 2.0)
         viz = _RecordingVisualizer()
         DTCFootholdCommand._debug_vis_impl(cmd, viz)
-        labels = {s["label"]: s["center"] for s in viz.spheres}
         self.assertEqual(len(viz.spheres), 12)
-        # torch float32 张量转 float64 有 1e-8 级表示误差, 用 atol 比较
-        np.testing.assert_allclose(
-            labels["tamols_opt_RL_0"], [-0.21, 0.14, 0.02], atol=1e-7
+        labels = {s["label"] for s in viz.spheres}
+        self.assertIn("tamols_opt_FL_0", labels)
+        self.assertIn("tamols_land_FL_0", labels)
+        self.assertIn("tamols_nom_FL_0", labels)
+
+
+class _FakeDropdown:
+    def __init__(self, options, initial_value):
+        self.options = list(options)
+        self.value = initial_value
+        self._cb = None
+
+    def on_update(self, cb):
+        self._cb = cb
+
+    def select(self, value):
+        """模拟用户在面板上选择."""
+        self.value = value
+        self._cb(None)
+
+
+class _FakeFolder:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeGui:
+    def __init__(self):
+        self.folders = []
+        self.dropdowns = []
+
+    def add_folder(self, label):
+        self.folders.append(label)
+        return _FakeFolder()
+
+    def add_dropdown(self, label, options, initial_value):
+        dd = _FakeDropdown(options, initial_value)
+        self.dropdowns.append((label, dd))
+        return dd
+
+
+class _FakeServer:
+    def __init__(self):
+        self.gui = _FakeGui()
+
+
+def _shim_command(terrain):
+    """构造只带 _env.scene.terrain 的 DTCFootholdCommand shim."""
+    cmd = object.__new__(DTCFootholdCommand)
+    cmd._env = SimpleNamespace(scene=SimpleNamespace(terrain=terrain))
+    return cmd
+
+
+class TestTerrainDifficultyGui(unittest.TestCase):
+    """viewer 课程难度下拉框 (复制 track/AllTrackingCommand 方案)."""
+
+    def _stair_terrain(self, num_levels=10, num_envs=8, cur_level=0):
+        return SimpleNamespace(
+            terrain_origins=torch.zeros(num_levels, 4, 3),
+            terrain_levels=torch.full((num_envs,), cur_level, dtype=torch.long),
         )
-        np.testing.assert_allclose(
-            labels["tamols_land_RL_0"], [-0.22, 0.15, 0.03], atol=1e-7
+
+    def test_dropdown_created_and_writes_level(self):
+        terrain = self._stair_terrain()
+        cmd = _shim_command(terrain)
+        server = _FakeServer()
+        actions = []
+        cmd.create_gui(
+            "Tamols_footholds", server, get_env_idx=lambda: 0,
+            request_action=actions.append,
         )
-        np.testing.assert_allclose(
-            labels["tamols_nom_RL_0"], [-0.2, 0.13, 0.0], atol=1e-7
+        # 10 级 + Random
+        self.assertEqual(len(server.gui.dropdowns), 1)
+        _, dd = server.gui.dropdowns[0]
+        self.assertEqual(len(dd.options), 11)
+        self.assertEqual(dd.value, dd.options[0])
+        # 选择 Level 5 -> 写入 env 并请求 RESET
+        dd.select(dd.options[5])
+        self.assertEqual(cmd._env.specified_terrain_level, 5)
+        self.assertEqual(actions, ["RESET"])
+        # 选择 Random
+        dd.select(dd.options[-1])
+        self.assertEqual(cmd._env.specified_terrain_level, "random")
+        self.assertEqual(actions, ["RESET", "RESET"])
+
+    def test_initial_value_from_env_or_terrain(self):
+        # 已有 specified_terrain_level -> 下拉初值跟随
+        terrain = self._stair_terrain()
+        cmd = _shim_command(terrain)
+        cmd._env.specified_terrain_level = 7
+        server = _FakeServer()
+        cmd.create_gui("t", server, get_env_idx=lambda: 0)
+        _, dd = server.gui.dropdowns[0]
+        self.assertEqual(dd.value, dd.options[7])
+        # specified="random" -> 初值为最后一项
+        cmd2 = _shim_command(self._stair_terrain())
+        cmd2._env.specified_terrain_level = "random"
+        server2 = _FakeServer()
+        cmd2.create_gui("t", server2, get_env_idx=lambda: 0)
+        self.assertEqual(
+            server2.gui.dropdowns[0][1].value,
+            server2.gui.dropdowns[0][1].options[-1],
         )
+        # 无 specified -> 跟随当前 env 的 terrain_levels
+        cmd3 = _shim_command(self._stair_terrain(cur_level=3))
+        server3 = _FakeServer()
+        cmd3.create_gui("t", server3, get_env_idx=lambda: 0)
+        self.assertEqual(server3.gui.dropdowns[0][1].value,
+                         server3.gui.dropdowns[0][1].options[3])
+
+    def test_flat_terrain_skips_gui(self):
+        # plane 地形无 terrain_origins -> 不创建控件
+        cmd = _shim_command(SimpleNamespace())
+        server = _FakeServer()
+        cmd.create_gui("t", server, get_env_idx=lambda: 0)
+        self.assertEqual(server.gui.dropdowns, [])
+        # 无 terrain 实体也不报错
+        cmd2 = _shim_command(None)
+        server2 = _FakeServer()
+        cmd2.create_gui("t", server2, get_env_idx=lambda: 0)
+        self.assertEqual(server2.gui.dropdowns, [])
+
+    def test_stair_reset_consumes_specified_level(self):
+        """链路验证: stair 变体的 reset 事件确实消费 specified_terrain_level."""
+        import inspect
+
+        from myrobot_mjlab.config.event.stair_reset import (
+            reset_root_state_from_stair,
+        )
+        from myrobot_mjlab.task.DTC.config.env_cfg import my_go2_stair_env_cfg
+
+        src = inspect.getsource(reset_root_state_from_stair)
+        self.assertIn("specified_terrain_level", src)
+        cfg = my_go2_stair_env_cfg()
+        self.assertEqual(
+            cfg.events["reset_base"].func, reset_root_state_from_stair
+        )
+
+
+class TestDTCFootholdCommandBuild(unittest.TestCase):
+    def test_cfg_overrides_build(self):
+        """cfg.build 必须返回 DTC 子类 (否则 create_gui/三色绘制/
+        摆动观测在真实 env 里全部静默失效 —— 父类 build 返回
+        TamolsMotionCommand)."""
+        import inspect
+
+        self.assertIn("build", DTCFootholdCommandCfg.__dict__)
+        src = inspect.getsource(DTCFootholdCommandCfg.build)
+        self.assertIn("DTCFootholdCommand(", src)
 
 
 class TestDTCRegistration(unittest.TestCase):

@@ -270,7 +270,7 @@ def euler_zyx_to_quat_torch(roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.
     w = cr * cp * cy + sr * sp * sy
     x = sr * cp * cy - cr * sp * sy
     y = cr * sp * cy + sr * cp * sy
-    z = cr * cp * sy - sr * cp * cy
+    z = cr * cp * sy - sr * sp * cy
     return torch.stack([w, x, y, z], dim=-1)
 
 

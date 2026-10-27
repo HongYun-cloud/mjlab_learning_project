@@ -12,6 +12,30 @@ except ImportError:
     ndimage = None
 
 
+def fill_height_holes(
+    h_raw: torch.Tensor,
+    h_valid: torch.Tensor,
+    ground_default: torch.Tensor,
+    kernel: torch.Tensor,
+    radius: int | None = None,
+) -> torch.Tensor:
+    """用 h_valid 邻域加权均值补全高程图空洞 (batched, [B,1,Nx,Ny]).
+
+    射线命中是稀疏采样 (光线间距 >= 地图格), 未命中格保持 ground_default;
+    落脚点候选 z 若直接采裸 h_raw 会把默认值当真实地形高度 (台阶任务中
+    表现为落点沉到台阶面以下)。radius 缺省取核半径 (len-1)//2。
+    """
+    if radius is None:
+        radius = (int(kernel.shape[-1]) - 1) // 2
+    num = F.conv2d(h_raw * h_valid, kernel, padding=radius)
+    den = F.conv2d(h_valid, kernel, padding=radius)
+    return torch.where(
+        den > 1e-6,
+        num / den.clamp(min=1e-6),
+        ground_default.view(-1, 1, 1, 1),
+    )
+
+
 class TorchTAMOLSMapProcessor(nn.Module):
     """Batched PyTorch GPU 2D convolution and morphology processor for TAMOLS height maps.
     

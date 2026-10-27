@@ -5,11 +5,12 @@ from typing import TYPE_CHECKING
 import torch
 import torch.nn.functional as F
 import math
+import time
 
 from mjlab.entity import Entity
 from mjlab.managers.command_manager import CommandTerm, CommandTermCfg
 
-from .map_processing import TorchTAMOLSMapProcessor
+from .map_processing import TorchTAMOLSMapProcessor, fill_height_holes
 from .tamols_foothold import TAMOLSOptimizerCfg
 from .tamols_motion_planner import TorchTAMOLSMotionPlanner, TAMOLSMotionPlannerCfg
 from .gait_scheduler import GaitScheduler, GaitSchedulerCfg
@@ -20,6 +21,9 @@ if TYPE_CHECKING:
 
 
 FOOT_NAMES = ("FL", "FR", "RL", "RR")
+
+_MAP_INIT_MAX_RETRY = 10
+"""reset 后地图初始化最多等待的有效帧数, 超过则接受 root_z 回退值。"""
 
 
 @dataclass(kw_only=True)
@@ -68,11 +72,25 @@ class TamolsMotionCommandCfg(CommandTermCfg):
     replan_on_touchdown: bool = True
     """主要在腿触地 (Touchdown / 相切换) 时触发重新规划求解"""
 
+    replan_after_all_four_touchdowns: bool = True
+    """整周期重规划 (默认): 单次触地不立即重规划, 每环境累计四条腿的触地
+    事件, 四条腿都至少落地过一次 (即走完一个完整步态周期, 最后一条腿触地
+    的瞬间) 才重规划一次, 任何重规划 (含指令突变/重置触发) 后清零。
+    计划在周期内完全冻结, 摆动腿落点绝不在空中被改写; 对指令突变的响应
+    由 replan_on_command_change 即时触发兜底。设 False 时每对对角腿
+    (FL+RR / FR+RL) 都落地一次就重规划一次 (每周期两次)。"""
+
     replan_on_command_change: bool = True
     """当目标航向或速度指令发生显著改变时触发重新计算"""
 
     command_change_threshold: float = 0.15
     """期望速度 (vx/vy/wz 任一分量) 变化超过该阈值时重新规划 (m/s 或 rad/s)"""
+
+    plan_time_log: bool = False
+    """每次重规划完成打印单次规划耗时 (仅 play 模式由工厂开启; 训练时保持静默)。"""
+
+    plan_time_log_every: int = 1
+    """每多少次规划打印一行 (play 默认每次都打)。"""
 
     # 本地高程图尺寸 (m)
     x_range: tuple[float, float] = (-1.0, 1.4)
@@ -147,6 +165,9 @@ class TamolsMotionCommand(CommandTerm):
         self.ground_default = torch.zeros(self.num_envs, device=self.device, dtype=torch.float32)
         """未观测格子的回退高度 (地形估计，不跟随机身瞬时机高)。"""
 
+        self._fill_kernel = torch.ones(1, 1, 5, 5, device=self.device, dtype=torch.float32)
+        """规划采样前的补洞核 (5×5 = ±0.1 m 邻域内有效格加权均值)。"""
+
         self._last_base_xy = torch.zeros((self.num_envs, 2), device=self.device, dtype=torch.float32)
         self._last_base_yaw = torch.zeros(self.num_envs, device=self.device, dtype=torch.float32)
         self._pose_valid = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
@@ -159,6 +180,55 @@ class TamolsMotionCommand(CommandTerm):
         不能在那里读 root_link_pos_w 来估地高，否则会把上一帧 (甚至出生默认位姿) 的机高
         当成地面，导致所有未观测格子的 z 悬在空中。
         """
+
+        self._map_init_retry = torch.zeros(self.num_envs, device=self.device, dtype=torch.float32)
+        """地图初始化已等待的帧数。
+
+        命令更新在 sim.sense() 之前执行 (见 ManagerBasedRlEnv.step)，reset 后的
+        第一帧传感器缓冲还是瞬移前的旧数据 (或全零)，此时没有任何有效命中。
+        旧实现立刻退回 "root_z - h_des" 估地高 —— root_z 因 PD 下垂偏低时
+        (如 0.253 - 0.28 = -0.027) 会把**整张地图**灌成负值，射线只能刷新
+        ~8% 的格子，其余格子整个回合保持污染值，规划落脚点因此沉到地面以下。
+        现在改为延迟初始化：没有有效命中的帧不写地图，等下一帧重试，
+        超过 _MAP_INIT_MAX_RETRY 帧才接受回退值 (避免卡死在 pending)。
+        """
+
+        self.time_since_replan = torch.zeros(self.num_envs, device=self.device, dtype=torch.float32)
+        """距最近一次重规划的经过时间 (秒, 每步 += step_dt, 重规划时清零)。
+
+        供奖励项把冻结的规划参考点外推成**随时间流动的参考轨迹**
+        (见 task/DTC/reward/terms.py 的 _advance_reference)。
+        """
+
+        self._td_since_replan = torch.zeros(
+            (self.num_envs, 4), device=self.device, dtype=torch.bool
+        )
+        """上次重规划以来每条腿是否触过地。
+
+        整周期模式: 四腿全 True 触发重规划; 对角模式: 任一对角对
+        (FL+RR 或 FR+RL) 两腿都 True 时触发。任何重规划后清零。
+        """
+
+        self.replan_event = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
+        """本步是否发生了重规划 [N] (每步清零, 触发时置位)。
+
+        action_consistency 奖励按此捕获解快照: 重规划节奏与触地沿解耦后
+        (整周期模式), 触地沿捕获会把同一个未更新的解在两个时刻各捕一次,
+        绝对时间对齐下表现为 -‖v‖·Δ 的假惩罚, 必须以真实重规划为准。"""
+
+        # -- 规划耗时统计: 每次重规划包一对 CUDA event, 下一步就绪时读取回传 --
+        self._plan_ev0: torch.cuda.Event | None = None
+        self._plan_ev1: torch.cuda.Event | None = None
+        if str(self.device).startswith("cuda"):
+            self._plan_ev0 = torch.cuda.Event(enable_timing=True)
+            self._plan_ev1 = torch.cuda.Event(enable_timing=True)
+        self._plan_ev_pending = False
+        self.plan_count: int = 0
+        self.plan_last_ms: float = float("nan")
+        self.plan_mean_ms: float = float("nan")
+        self.plan_last_batch: int = 0
 
         # 4. 规划输出张量缓冲区
         self.optimal_footholds = torch.zeros((self.num_envs, 4, 3), device=self.device, dtype=torch.float32)
@@ -238,11 +308,14 @@ class TamolsMotionCommand(CommandTerm):
         hit_pos_w: torch.Tensor | None,
         hits_ok: torch.Tensor | None,
     ) -> None:
-        """用当帧观测重置刚 reset 环境的高程图。
+        """用当帧观测重置刚 reset 环境的高程图 (延迟到首个有效命中帧)。
 
-        地高取本帧所有有效命中点 z 的中位数 (平地≈0，台阶上≈当前台阶面)；
-        没有命中点时才退回 "当前机高 - h_des"。这里读到的机器人位姿
-        已经是 sim.forward() 之后的新位姿。
+        地高取本帧所有有效命中点 z 的中位数 (平地≈0，台阶上≈当前台阶面)。
+        **没有有效命中的帧不写地图**、保持 pending 等下一帧 —— 命令更新在
+        sim.sense() 之前执行，reset 后第一帧传感器必然是旧数据，此时若退回
+        "root_z - h_des" 会把整张地图灌成被 PD 下垂污染的负值 (见
+        _map_init_retry 注释)。连续 _MAP_INIT_MAX_RETRY 帧都拿不到有效命中
+        才接受回退值，避免永久 pending。
         """
         init = self._map_needs_init
         if not bool(init.any()):
@@ -252,17 +325,24 @@ class TamolsMotionCommand(CommandTerm):
         if hit_pos_w is not None and hits_ok is not None:
             z = hit_pos_w[..., 2].masked_fill(~hits_ok, float("nan"))
             median_z = z.nanmedian(dim=1).values
-            # 中位数离"机高 - h_des"太远说明本帧命中大多是噪声，退回机高估计
+            # 中位数离"机高 - h_des"太远说明本帧命中大多是噪声，视为无效
             sane = torch.isfinite(median_z) & ((median_z - fallback).abs() < 0.5)
             ground = torch.where(sane, median_z, fallback)
         else:
+            sane = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
             ground = fallback
 
-        self.ground_default[init] = ground[init]
-        self.h_raw[init] = ground[init].view(-1, 1, 1, 1)
-        self.h_valid[init] = 0.0
-        self._pose_valid[init] = False
-        self._map_needs_init[init] = False
+        self._map_init_retry[init] += 1.0
+        ready = init & (sane | (self._map_init_retry >= _MAP_INIT_MAX_RETRY))
+        if not bool(ready.any()):
+            return
+
+        self.ground_default[ready] = ground[ready]
+        self.h_raw[ready] = ground[ready].view(-1, 1, 1, 1)
+        self.h_valid[ready] = 0.0
+        self._pose_valid[ready] = False
+        self._map_needs_init[ready] = False
+        self._map_init_retry[ready] = 0.0
 
     def _roll_map_odometry(self) -> None:
         """按机身位姿增量把高程图内容搬回"世界不动"的位置。
@@ -370,24 +450,51 @@ class TamolsMotionCommand(CommandTerm):
         rel_y_b = -sin_y * rel_w[..., 0] + cos_y * rel_w[..., 1]
         rel_z_w = hit_pos_w[..., 2]
 
-        idx_x = torch.round((rel_x_b - self.x_min) / self.cell_size).long()
-        idx_y = torch.round((rel_y_b - self.y_min) / self.cell_size).long()
+        # 命中双线性 splat 到 2×2 邻格：光线网格 0.1 m、地图格 0.05 m，
+        # 旧的"最近单格"写法只写进一半格子，另一半永远是 ground_default
+        # 填的洞 (棋盘洞)，落脚点候选采样落到洞上就会读出远低于真实台面的
+        # 旧地面。按 (fx, fy) 权重散布到周围 4 格，同一格多命中取加权均值。
+        c_x = (rel_x_b - self.x_min) / self.cell_size
+        c_y = (rel_y_b - self.y_min) / self.cell_size
+        i0 = torch.floor(c_x).long()
+        j0 = torch.floor(c_y).long()
+        fx = (c_x - i0.to(c_x.dtype)).to(self.h_raw.dtype)
+        fy = (c_y - j0.to(c_y.dtype)).to(self.h_raw.dtype)
 
         # 第二道防线：地图只覆盖机身附近约 2 m，真实地面不会离当前地高差 0.6 m 以上
         z_lo = (self.ground_default - 0.6).unsqueeze(1)
         z_hi = (self.ground_default + 0.6).unsqueeze(1)
         plausible_z = (rel_z_w > z_lo) & (rel_z_w < z_hi)
 
-        valid = (
-            hits_ok & plausible_z &
-            (idx_x >= 0) & (idx_x < self.nx) &
-            (idx_y >= 0) & (idx_y < self.ny)
-        )
+        valid = hits_ok & plausible_z
 
         if valid.any():
-            b_idx = torch.arange(self.num_envs, device=self.device).unsqueeze(1).expand_as(idx_x)
-            self.h_raw[b_idx[valid], 0, idx_x[valid], idx_y[valid]] = rel_z_w[valid]
-            self.h_valid[b_idx[valid], 0, idx_x[valid], idx_y[valid]] = 1.0
+            b_idx = torch.arange(self.num_envs, device=self.device).unsqueeze(1).expand_as(i0)
+            h_acc = torch.zeros_like(self.h_raw)
+            w_acc = torch.zeros_like(self.h_valid)
+            # 注意: 这里不要在循环里做 ``m = valid & ...`` 再用 ``ii[m]``
+            # 花式索引 —— 每次布尔索引都会触发一次 nonzero (device->host
+            # 同步), 4 个邻格 × 300+ 命中在 play 里会占 ~7 ms CPU.
+            # 改为全量 index_add_: 越界/无效命中的权重置 0, 索引 clamp 到
+            # 合法范围, 结果与逐格 mask 一致.
+            for di, wx in ((0, 1.0 - fx), (1, fx)):
+                for dj, wy in ((0, 1.0 - fy), (1, fy)):
+                    ii_raw = i0 + di
+                    jj_raw = j0 + dj
+                    ww = wx * wy
+                    ww = ww * valid.to(ww.dtype)
+                    ww = ww * (
+                        (ii_raw >= 0) & (ii_raw < self.nx)
+                        & (jj_raw >= 0) & (jj_raw < self.ny)
+                    ).to(ww.dtype)
+                    ii = ii_raw.clamp(0, self.nx - 1)
+                    jj = jj_raw.clamp(0, self.ny - 1)
+                    flat = (b_idx * self.nx + ii) * self.ny + jj
+                    h_acc.view(-1).index_add_(0, flat.reshape(-1), (rel_z_w * ww).reshape(-1))
+                    w_acc.view(-1).index_add_(0, flat.reshape(-1), ww.reshape(-1).to(w_acc.dtype))
+            got = w_acc > 1e-4
+            self.h_raw = torch.where(got, h_acc / w_acc.clamp(min=1e-6), self.h_raw)
+            self.h_valid = torch.where(got, torch.ones_like(self.h_valid), self.h_valid)
 
         # 缓慢更新"地面默认高度"：只用已观测格子的均值做低通，绝不跟随机身瞬时高度
         count = self.h_valid.sum(dim=(1, 2, 3))
@@ -411,7 +518,9 @@ class TamolsMotionCommand(CommandTerm):
 
         # 运行期绝不再整体覆写地图，否则高程图退化成"跟随当前机高"
         self._map_needs_init[env_ids] = True
+        self._map_init_retry[env_ids] = 0.0
         self._pose_valid[env_ids] = False
+        self._td_since_replan[env_ids] = False
 
         # 在 reset 时将已给分标记锁定为 True，杜绝出生瞬间在原地白领一次满分
         self.foothold_awarded[env_ids] = True
@@ -462,6 +571,33 @@ class TamolsMotionCommand(CommandTerm):
             torch.zeros(self.num_envs, device=self.device),
         )
 
+    def _collect_plan_time(self) -> None:
+        """回收上一次规划的 CUDA 计时事件 (就绪才读, 不阻塞仿真循环)。"""
+        if self._plan_ev0 is None or not self._plan_ev_pending:
+            return
+        if self._plan_ev1.query():
+            self._record_plan_ms(self._plan_ev0.elapsed_time(self._plan_ev1))
+            self._plan_ev_pending = False
+
+    def _record_plan_ms(self, ms: float) -> None:
+        """累计单次规划耗时统计 (EMA + 每 10 次打印一次)。"""
+        self.plan_count += 1
+        self.plan_last_ms = float(ms)
+        self.plan_mean_ms = (
+            self.plan_last_ms
+            if self.plan_count == 1
+            else 0.9 * self.plan_mean_ms + 0.1 * self.plan_last_ms
+        )
+        if (
+            self.cfg.plan_time_log
+            and self.plan_count % max(1, int(self.cfg.plan_time_log_every)) == 0
+        ):
+            print(
+                f"[TAMOLS] 单次规划耗时: 最近 {self.plan_last_ms:.2f} ms | "
+                f"EMA {self.plan_mean_ms:.2f} ms | 累计 {self.plan_count} 次 "
+                f"(batch={self.plan_last_batch} env)"
+            )
+
     def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
         """纯 PyTorch GPU 向量化的 TAMOLS 运动规划与落脚点更新。
         
@@ -473,6 +609,9 @@ class TamolsMotionCommand(CommandTerm):
         5. 调用 PyTorch GPU 2D 卷积 (Conv2D) 与形态学算子并行优化候选落脚点与基座轨迹；
         6. 全向量化更新机身局部坐标系平面落脚点与 command。
         """
+        # 回收上一步重规划的计时事件 (不阻塞, 就绪才读)
+        self._collect_plan_time()
+
         # ======================================================================
         # 1. 推进步态调度器时钟
         # ======================================================================
@@ -480,6 +619,12 @@ class TamolsMotionCommand(CommandTerm):
         dt = float(self._env.step_dt)
         self.gait_scheduler.step(dt=dt, env_ids=env_ids)
         curr_contacts = self.gait_scheduler.contact_states
+        # 规划参考龄期: 每步累加, 重规划时清零 (奖励项用它把冻结参考点
+        # 外推成流动参考轨迹; 清零发生在下方 replan_mask 分支)
+        self.time_since_replan += dt
+        # 本步重规划事件标志 (每步先清零, 触发时置位; 供 action_consistency
+        # 奖励对齐真实重规划捕获解快照 —— 整周期模式下触地沿不再等于重规划)
+        self.replan_event.zero_()
 
         # 当某条腿处于腾空摆动相 (curr_contacts < 0.5) 时，重置该腿到达给分标记为 False，使其可为即将到来的下一次触地给分
         is_swing = curr_contacts < 0.5
@@ -496,6 +641,7 @@ class TamolsMotionCommand(CommandTerm):
             base_yaw = self.robot.data.heading_w
             cos_y = torch.cos(base_yaw)
             sin_y = torch.sin(base_yaw)
+            self.time_since_replan.zero_()  # 旁路模式每步都是"新解"
 
             self.desired_base_pos_w[:, 0] = base_pos_w[:, 0]
             self.desired_base_pos_w[:, 1] = base_pos_w[:, 1]
@@ -553,7 +699,20 @@ class TamolsMotionCommand(CommandTerm):
             replan_mask = ~self.footholds_initialized
             if self.cfg.replan_on_touchdown:
                 touchdown = (prev_contacts < 0.5) & (curr_contacts > 0.5)
-                replan_mask |= torch.any(touchdown, dim=-1)
+                if self.cfg.replan_after_all_four_touchdowns:
+                    # 四条腿都各自落过一次地 (整周期) 才重规划一次
+                    self._td_since_replan |= touchdown
+                    replan_mask |= self._td_since_replan.all(dim=-1)
+                else:
+                    # 每对对角腿 (FL+RR / FR+RL) 都落地一次才重规划一次:
+                    # 不能简单用 any(touchdown), 否则单腿触地就会触发,
+                    # 频率变成“每腿一次”, 与“对角腿落一次”不符.
+                    self._td_since_replan |= touchdown
+                    pair_ready = (
+                        self._td_since_replan[:, [0, 3]].all(dim=-1)
+                        | self._td_since_replan[:, [1, 2]].all(dim=-1)
+                    )
+                    replan_mask |= pair_ready
 
             if self.cfg.replan_on_command_change:
                 # 期望速度突变 (vx/vy/wz 任一分量变化超过阈值) 时重新规划
@@ -569,10 +728,22 @@ class TamolsMotionCommand(CommandTerm):
         # 5. 执行 PyTorch GPU 2D 卷积与落脚点最优化规划
         # ======================================================================
         if replan_mask.any():
-            # 为新规划步骤重置基座到达给分标记
-            self.base_pos_awarded[replan_mask] = False
+            # 触发环境压缩成子集下标: 规划只算 [M, ...] 子集并按位置写回,
+            # 避免低触发率下全 batch 规划再 mask 选取的无效计算。
+            replan_idx = replan_mask.nonzero(as_tuple=True)[0]
+            self.plan_last_batch = int(replan_idx.shape[0])
 
-            cmd_vel_b = torch.stack([cmd_vx, cmd_vy], dim=-1)
+            # -- 单次规划计算计时起点 (覆盖标称/卷积/plan_motion/写回全过程) --
+            _t_plan0 = time.perf_counter()
+            if self._plan_ev0 is not None:
+                self._plan_ev0.record()
+
+            # 为新规划步骤重置基座到达给分标记
+            self.base_pos_awarded[replan_idx] = False
+            self.time_since_replan[replan_idx] = 0.0
+            self.replan_event.copy_(replan_mask)
+
+            cmd_vel_b = torch.stack([cmd_vx[replan_idx], cmd_vy[replan_idx]], dim=-1)
 
             # 每条腿距其"下次触地"的时间:
             #   摆动相 → time_left 就是剩余摆动时间;
@@ -586,58 +757,76 @@ class TamolsMotionCommand(CommandTerm):
             stance_time = stride * duty
             swing_time = stride * (1.0 - duty)
             time_to_touchdown = torch.where(
-                gait.contact_states < 0.5,
-                gait.time_left,
-                gait.time_left + swing_time,
+                gait.contact_states[replan_idx] < 0.5,
+                gait.time_left[replan_idx],
+                gait.time_left[replan_idx] + swing_time,
             )
             lead_time = time_to_touchdown + 0.5 * stance_time
 
             # a. 标称落脚点 (Raibert 启发式 + 旋转补偿)
             nom_footholds = self.torch_planner.foothold_planner.compute_nominal_footholds(
-                base_pos_w=self.robot.data.root_link_pos_w,
-                base_yaw=self.robot.data.heading_w,
-                base_vel_w=self.robot.data.root_link_lin_vel_w,
+                base_pos_w=self.robot.data.root_link_pos_w[replan_idx],
+                base_yaw=self.robot.data.heading_w[replan_idx],
+                base_vel_w=self.robot.data.root_link_lin_vel_w[replan_idx],
                 cmd_vel_b=cmd_vel_b,
-                base_ang_vel_w=self.robot.data.root_link_ang_vel_w,
-                cmd_yaw_rate=cmd_wz,
+                base_ang_vel_w=self.robot.data.root_link_ang_vel_w[replan_idx],
+                cmd_yaw_rate=cmd_wz[replan_idx],
                 stance_time=stance_time,
                 lead_time=lead_time,
             )
 
-            # b. GPU 2D 卷积与形态学高程图处理 (h_s1, h_s2, gradients)
-            h_s1, h_s2, grads = self.map_processor(self.h_raw)
+            # b. 补洞 + GPU 2D 卷积与形态学高程图处理, 仅子集高程图。
+            #    洞 (滚动边缘裁剪/历史未观测格) 直接进采样会把 ground_default
+            #    当真实地形, 还会在洞边界造出假梯度把落点从台阶上推开: 先用
+            #    5×5 邻域 h_valid 加权均值补洞, 采样与梯度都作用于补洞图。
+            sub_h_raw = self.h_raw[replan_idx]
+            sub_h_valid = self.h_valid[replan_idx]
+            h_use = fill_height_holes(
+                sub_h_raw, sub_h_valid, self.ground_default[replan_idx], self._fill_kernel
+            )
+            h_s1, h_s2, grads = self.map_processor(h_use)
             gx, gy = grads["h"]
             gx_s1, gy_s1 = grads["h_s1"]
             grad_sq_raw = gx**2 + gy**2
             grad_sq_s1 = gx_s1**2 + gy_s1**2
 
-            terrain_maps = torch.cat([self.h_raw, h_s2, grad_sq_raw, grad_sq_s1], dim=1)  # [num_envs, 4, Nx, Ny]
+            terrain_maps = torch.cat([h_use, h_s2, grad_sq_raw, grad_sq_s1], dim=1)  # [M, 4, Nx, Ny]
 
-            # c. GPU 落脚点优化、自适应基座姿态与解析逆运动学
+            # c. GPU 落脚点优化、自适应基座姿态与解析逆运动学 (子集)
             plan_res = self.torch_planner.plan_motion(
                 nominal_footholds_w=nom_footholds,
-                base_pos_w=self.robot.data.root_link_pos_w,
-                base_yaw=self.robot.data.heading_w,
-                base_vel_w=self.robot.data.root_link_lin_vel_w,
+                base_pos_w=self.robot.data.root_link_pos_w[replan_idx],
+                base_yaw=self.robot.data.heading_w[replan_idx],
+                base_vel_w=self.robot.data.root_link_lin_vel_w[replan_idx],
                 cmd_vel_b=cmd_vel_b,
-                base_ang_vel_w=self.robot.data.root_link_ang_vel_w,
-                cmd_yaw_rate=cmd_wz,
+                base_ang_vel_w=self.robot.data.root_link_ang_vel_w[replan_idx],
+                cmd_yaw_rate=cmd_wz[replan_idx],
                 terrain_maps=terrain_maps,
                 lead_time=lead_time,
             )
 
             # d. 仅更新发生触地或指令改变的环境 (其余环境落脚点世界坐标保持稳定)
-            self.optimal_footholds[replan_mask] = plan_res["optimal_footholds_w"][replan_mask]
-            self.nominal_footholds[replan_mask] = nom_footholds[replan_mask]
-            self.desired_base_pos_w[replan_mask] = plan_res["desired_base_pos_w"][replan_mask]
-            self.desired_base_quat_w[replan_mask] = plan_res["desired_base_quat_w"][replan_mask]
-            self.desired_base_euler[replan_mask] = plan_res["desired_base_euler"][replan_mask]
-            self.desired_base_lin_vel_w[replan_mask] = plan_res["desired_base_lin_vel_w"][replan_mask]
-            self.desired_base_ang_vel_w[replan_mask] = plan_res["desired_base_ang_vel_w"][replan_mask]
-            self.desired_base_lin_acc_w[replan_mask] = plan_res["desired_base_lin_acc_w"][replan_mask]
-            self.desired_base_ang_acc_w[replan_mask] = plan_res["desired_base_ang_acc_w"][replan_mask]
-            self.desired_joint_pos[replan_mask] = plan_res["desired_joint_pos"][replan_mask]
-            self.footholds_initialized[replan_mask] = True
+            self.optimal_footholds[replan_idx] = plan_res["optimal_footholds_w"]
+            self.nominal_footholds[replan_idx] = nom_footholds
+            self.desired_base_pos_w[replan_idx] = plan_res["desired_base_pos_w"]
+            self.desired_base_quat_w[replan_idx] = plan_res["desired_base_quat_w"]
+            self.desired_base_euler[replan_idx] = plan_res["desired_base_euler"]
+            self.desired_base_lin_vel_w[replan_idx] = plan_res["desired_base_lin_vel_w"]
+            self.desired_base_ang_vel_w[replan_idx] = plan_res["desired_base_ang_vel_w"]
+            self.desired_base_lin_acc_w[replan_idx] = plan_res["desired_base_lin_acc_w"]
+            self.desired_base_ang_acc_w[replan_idx] = plan_res["desired_base_ang_acc_w"]
+            self.desired_joint_pos[replan_idx] = plan_res["desired_joint_pos"]
+            self.footholds_initialized[replan_idx] = True
+
+            # 本次重规划完成: 四腿落地事件清零 (四腿全落模式重新开始累计)
+            self._td_since_replan[replan_idx] = False
+
+            # -- 计时终点 --
+            if self._plan_ev0 is not None:
+                self._plan_ev1.record()
+                self._plan_ev_pending = True
+            else:
+                self._record_plan_ms((time.perf_counter() - _t_plan0) * 1e3)
 
         # ======================================================================
         # 6. 全环境向量化更新机身航向坐标系平面落脚点与 command (耗时 < 0.01ms)
@@ -664,6 +853,87 @@ class TamolsMotionCommand(CommandTerm):
         # 摆动腿: 规划目标就是它正在飞向的落点，持续跟随最新的重规划结果;
         # 支撑腿: 保持摆动相结束时冻结的落点不变。
         self.landing_footholds[is_swing_now] = self.optimal_footholds[is_swing_now]
+
+        # 原地时仍让 gait_scheduler 持续运行 (actor 继续按 trot 相位踏步),
+        # 但不要让高度图 argmin 把零速度落点推到边缘或推成内八。将规划
+        # 目标固定在当前机身下方的 Go2 名义站姿; gait phase/contact 观测
+        # 不变, 因而这是“原地踏步”, 不是冻结步态或直接停动作。
+        if getattr(self.cfg, "in_place_gait_enable", False):
+            idle_speed = torch.sqrt(cmd_vx.square() + cmd_vy.square())
+            # 角速度可用于终点 heading hold; 只要平移命令为零仍保持原地
+            # trot 落点, 不让规划器把转向命令误解成侧向走/内八落点.
+            in_place = idle_speed <= float(self.cfg.in_place_cmd_threshold)
+            if bool(in_place.any()):
+                base_pos = self.robot.data.root_link_pos_w
+                yaw = self.robot.data.heading_w
+                cy, sy = torch.cos(yaw), torch.sin(yaw)
+                foot_b = self.nominal_foot_b
+                foot_w = torch.stack(
+                    (
+                        base_pos[:, 0:1]
+                        + cy.unsqueeze(-1) * foot_b[:, 0]
+                        - sy.unsqueeze(-1) * foot_b[:, 1],
+                        base_pos[:, 1:2]
+                        + sy.unsqueeze(-1) * foot_b[:, 0]
+                        + cy.unsqueeze(-1) * foot_b[:, 1],
+                        base_pos[:, 2:3] + foot_b[:, 2].unsqueeze(0),
+                    ),
+                    dim=-1,
+                )
+                self.optimal_footholds[in_place] = foot_w[in_place]
+                self.nominal_footholds[in_place] = foot_w[in_place]
+                self.landing_footholds[in_place] = foot_w[in_place]
+                self.desired_joint_pos[in_place] = self.nominal_joint_pos[in_place]
+
+                # 保持当前 base 位置和航向, 去掉规划器残留的前倾/侧倾参考.
+                self.desired_base_pos_w[in_place] = base_pos[in_place]
+                yaw_ref = yaw.clone()
+                velocity_term = getattr(self, "_velocity_cmd_term", None)
+                if velocity_term is None:
+                    cmd_name = getattr(self.cfg, "velocity_command_name", "twist")
+                    if cmd_name in self._env.command_manager.active_terms:
+                        velocity_term = self._env.command_manager.get_term(cmd_name)
+                        self._velocity_cmd_term = velocity_term
+                face_heading = getattr(
+                    getattr(velocity_term, "cfg", None), "face_heading", None
+                )
+                if face_heading is not None:
+                    yaw_ref[in_place] = float(face_heading)
+                half_yaw = 0.5 * yaw_ref[in_place]
+                quat = torch.stack(
+                    (
+                        torch.cos(half_yaw),
+                        torch.zeros_like(half_yaw),
+                        torch.zeros_like(half_yaw),
+                        torch.sin(half_yaw),
+                    ),
+                    dim=-1,
+                )
+                self.desired_base_quat_w[in_place] = quat
+                self.desired_base_euler[in_place] = torch.stack(
+                    (
+                        torch.zeros_like(yaw[in_place]),
+                        torch.zeros_like(yaw[in_place]),
+                        yaw_ref[in_place],
+                    ),
+                    dim=-1,
+                )
+                self.desired_base_lin_vel_w[in_place] = 0.0
+                self.desired_base_ang_vel_w[in_place] = 0.0
+                self.desired_base_ang_vel_w[in_place, 2] = cmd_wz[in_place]
+                self.desired_base_lin_acc_w[in_place] = 0.0
+                self.desired_base_ang_acc_w[in_place] = 0.0
+                self.footholds_initialized[in_place] = True
+                self.time_since_replan[in_place] = 0.0
+
+                # 同步 policy 的落点观测为当前机身系名义站姿.
+                pos_xy = base_pos[:, :2]
+                rel = self.optimal_footholds[:, :, :2] - pos_xy.unsqueeze(1)
+                bx = cy.unsqueeze(-1) * rel[..., 0] + sy.unsqueeze(-1) * rel[..., 1]
+                by = -sy.unsqueeze(-1) * rel[..., 0] + cy.unsqueeze(-1) * rel[..., 1]
+                planar = torch.stack((bx, by), dim=-1).flatten(start_dim=1)
+                self.planar_footholds[in_place] = planar[in_place]
+                self._command[in_place] = self.optimal_footholds[in_place].reshape(-1, 12)
 
     def _update_metrics(self) -> None:
         pass

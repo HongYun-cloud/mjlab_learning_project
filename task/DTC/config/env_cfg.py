@@ -43,7 +43,10 @@ from myrobot_mjlab.config.command.StairVelocityCommand import (
     reached_stair_peak,
 )
 from myrobot_mjlab.config.command.TireVelocityCommand import TireTraverseVelocityCommandCfg
-from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_stair_peak
+from myrobot_mjlab.config.curriculum.stair_curriculum import (
+    anneal_reward_weight,
+    terrain_levels_stair_peak,
+)
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.command_manager import CommandTermCfg
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
@@ -388,6 +391,25 @@ def my_go2_stair_env_cfg(
       func=terrain_levels_stair_peak,
       params={"command_name": "twist", "up_streak": 5, "down_streak": 3},
   )
+  # 抬脚高度奖励退火: 权重 -2.0 -> -1.0 -> -0.5 -> 0.
+  # 用 common_step_counter 计时; 默认按 1000 iter x 24 steps 约 24000 步
+  # 退完. 之后 foot_swing_height 不再提供固定高度引导, 抬脚完全由 RL
+  # 通过 foothold tracking / 碰撞终止 / 前进奖励自己优化.
+  # 训练 3000 iter 时可设 DTC_SWING_ANNEAL_STEPS=72000 让退火覆盖全程.
+  if not play:
+      cfg.curriculum["foot_swing_anneal"] = CurriculumTermCfg(
+          func=anneal_reward_weight,
+          params={
+              "reward_name": "foot_swing_height",
+              "total_steps": int(os.getenv("DTC_SWING_ANNEAL_STEPS", "24000")),
+              "schedule": (
+                  (0.0, -2.0),
+                  (0.33, -1.0),
+                  (0.66, -0.5),
+                  (1.0, 0.0),
+              ),
+          },
+      )
   # 到达终点不再终止 episode: 固定跑满 10 s, 最后 2 s 在终点停稳/
   # 姿态良好才给奖励. 课程仍用 peak_reached_episode 记"到达".
   cfg.terminations.pop("reached_peak", None)

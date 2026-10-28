@@ -364,3 +364,55 @@ def terrain_levels_stair_peak(
         result["mean"] = torch.mean(levels)
         result["max"] = torch.max(levels)
     return result
+
+
+def anneal_reward_weight(
+    env,
+    env_ids,
+    reward_name: str,
+    total_steps: int,
+    schedule: tuple[tuple[float, float], ...] = (
+        (0.0, -2.0),
+        (0.33, -1.0),
+        (0.66, -0.5),
+        (1.0, 0.0),
+    ),
+) -> dict[str, float]:
+    """按训练进度线性退火某个 reward 项的权重.
+
+    用 ``env.common_step_counter`` (每个控制步 +1) 作为训练进度, 在每个
+    episode reset 时更新 ``env.reward_manager`` 中对应 term 的 weight.
+    ``total_steps`` 是退火结束的步数: 1000 iter × 24 steps = 24000.
+
+    典型用法是让 ``foot_swing_height`` 从 -2.0 逐步降到 0:
+    前期提供抬脚高度引导, 后期完全交给 RL 自己优化.
+    """
+    if total_steps <= 0:
+        raise ValueError(f"total_steps 需 > 0, 实际 {total_steps}")
+    if not schedule:
+        raise ValueError("schedule 不能为空")
+
+    progress = min(
+        max(float(env.common_step_counter) / float(total_steps), 0.0), 1.0
+    )
+    stages = sorted((float(p), float(w)) for p, w in schedule)
+    if progress <= stages[0][0]:
+        weight = stages[0][1]
+    elif progress >= stages[-1][0]:
+        weight = stages[-1][1]
+    else:
+        weight = stages[-1][1]
+        for (p0, w0), (p1, w1) in zip(stages, stages[1:]):
+            if p0 <= progress <= p1:
+                t = (progress - p0) / max(p1 - p0, 1e-9)
+                weight = w0 + (w1 - w0) * t
+                break
+
+    try:
+        term_cfg = env.reward_manager.get_term_cfg(reward_name)
+        term_cfg.weight = float(weight)
+    except (AttributeError, ValueError):
+        # play 模式可能已移除该 reward; 静默跳过.
+        pass
+
+    return {"weight": float(weight), "progress": progress}

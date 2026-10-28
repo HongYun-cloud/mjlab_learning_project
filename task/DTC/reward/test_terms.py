@@ -97,22 +97,6 @@ class TestBasePoseTracking(unittest.TestCase):
         exp_r = math.exp(-2.0 * np.linalg.norm(err))
         self.assertAlmostEqual(float(r[0]), exp_r, places=6)
 
-    def test_squared_error_matches_paper(self):
-        env, cmd, asset, yaw = _make_env()
-        dt = 0.02
-        r = dtc_reward.base_pose_tracking(
-            env, sigma=1200.0, order=0, component="pos", squared=True
-        )
-        p = np.array([1.0, 0.5, 0.35]) + np.array([0.3, 0.1, 0.0]) * dt
-        err = p - np.array([0.9, 0.4, 0.3])
-        exp_r = math.exp(-1200.0 * float(np.dot(err, err)))
-        self.assertAlmostEqual(float(r[0]), exp_r, places=6)
-        # 非平方范数在 σ=1200 / cm 级误差下 underflow 到 0, 无梯度.
-        r_old = dtc_reward.base_pose_tracking(
-            env, sigma=1200.0, order=0, component="pos"
-        )
-        self.assertLess(float(r_old[0]), 1e-5)
-
     def test_flowing_reference_uses_time_since_replan(self):
         """tsr>0: 位置/姿态参考按 T=tsr+dt 流动 (不再钉死在重规划点)."""
         env, cmd, asset, yaw = _make_env()

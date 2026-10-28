@@ -27,7 +27,10 @@ from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from myrobot_mjlab.task.DTC.velocity_env_cfg import make_velocity_env_cfg
 from mjlab.scene import SceneCfg
 from mjlab.terrains import TerrainEntityCfg
-from myrobot_mjlab.config.terrain.stair_terrain import STAIRS_TERRAINS_CFG
+from myrobot_mjlab.config.terrain.stair_terrain import (
+    STAIRS_TERRAINS_CFG,
+    pyramid_stairs_inv,
+)
 from myrobot_mjlab.config.terrain.tire_array import TIRE_ARRAY_TERRAINS_CFG
 from myrobot_mjlab.config.event.stair_reset import reset_root_state_from_stair,out_of_patch_bounds
 from myrobot_mjlab.config.event.tire_reset import reset_root_state_from_tire
@@ -265,9 +268,22 @@ def my_go2_stair_env_cfg(
     play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
 
+  # 楼梯 patch 从 8x8 扩到 10x10: 台阶区外缘仍在 3.0 m, 但外侧平台
+  # 从 1 m 加宽到 2 m, 终点可以放到 y=4.2, 避免机器人停在台阶边缘.
+  stairs_10m = replace(
+      STAIRS_TERRAINS_CFG,
+      size=(10.0, 10.0),
+      sub_terrains={
+          "pyramid_stairs": pyramid_stairs_inv(
+              proportion=1.0,
+              step_height_range=(0.0, 0.30),
+              border_width=2.0,
+          ),
+      },
+  )
   cfg.scene.terrain = TerrainEntityCfg(
             terrain_type="generator",
-            terrain_generator=replace(STAIRS_TERRAINS_CFG),
+            terrain_generator=stairs_10m,
             # 从平地 checkpoint 微调时不必再从 Level 0 (0 台阶) 重新爬课程;
             # Level 1 ≈ 3.3 cm 台阶, 仍留出适应空间.
             max_init_terrain_level=1,
@@ -293,13 +309,13 @@ def my_go2_stair_env_cfg(
   # cfg.terminations.pop("illegal_contact", None)
 
   # 楼梯地形 border_width=20m，内置 out_of_terrain_bounds 边界太大不会触发；
-  # 用 out_of_patch_bounds 代替：机器人离开自己的 8×8 patch 即终止（time_out）
+  # 用 out_of_patch_bounds 代替：机器人离开自己的 10x10 patch 即终止（time_out）
   cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.terminations.pop("reached_edge", None)
   cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
     func=out_of_patch_bounds,
     time_out=True,
-    params={"half_size": 4.0, "margin": 0.1},  # patch 8×8, limit=3.9m  )
+    params={"half_size": 5.0, "margin": 0.1},  # patch 10x10, limit=4.9m
   )
   # 命令：增大 switch_steps 给机器人足够时间上/下楼
   # 机器人出生在 y≈4m 处，以 1m/s 走到中心约 4~6s，
@@ -312,16 +328,14 @@ def my_go2_stair_env_cfg(
            # 0.40 m/s × stride_duration=0.8 s ≈ 0.32 m; 落点再限制到
            # 0.30 m, 避免跨过 0.3 m 踏面后落在台阶边缘/立面.
            forward_speed=0.40,
-          switch_steps=750,    # 500 steps × 0.02s/step = 10s，足够走上/下楼梯
-          center_threshold=0.8,
-          # north_peak 模式: 速度恒指向 patch 正北方向台阶区外 1 m 的平地
-          # (origin + (0, 3.85): 台阶区外缘 ~3.15 m, 终点在最高面 z=0 上),
+          switch_steps=750,    # 750 steps × 0.02s/step = 15s
+          center_threshold=0.3,
+          # north_peak 模式: 速度恒指向 patch 正北方向台阶区外的平地
+          # (origin + (0, 4.2): 台阶区外缘 ~3.0 m, 终点在加宽后的平台上),
           # 头部朝向恒北 (+y 为北, yaw=π/2, wz P 控制对齐),
-          # 到达目标 (< 0.8 m) 后原地站立, 不再切下楼。
-          # 注意 3.85 贴着 out_of_patch_bounds 上限 3.9 (half 4.0 - margin 0.1),
-          # 若再外移需同步放宽 margin。
+          # 到达目标 (< 0.3 m) 后原地站立, 不再切下楼。
           target_mode="north_peak",
-          target_offset_w=(0.0, 3.85),
+          target_offset_w=(0.0, 4.2),
           face_heading=math.pi / 2,
           stop_at_target=True,
           # 速度方向 = 当前基座位置 -> 目标终点, 大小恒为 forward_speed.
@@ -368,7 +382,7 @@ def my_go2_stair_env_cfg(
   # 姿态良好才给奖励. 课程仍用 peak_reached_episode 记"到达".
   cfg.terminations.pop("reached_peak", None)
   # 到终点后的分项保持奖励: 到达终点/线速度为 0/姿态良好 各占 1/3,
-  # 连续评分, 越好越高; 只保持在最后 2 s 窗口内时结算.
+  # 连续评分, 越好越高; 终点外移后到顶约 11 s, 用最后 4 s 训练停稳.
   cfg.rewards["reach_peak_bonus"] = RewardTermCfg(
       func=reach_peak_bonus,
       weight=1.0,
@@ -376,7 +390,7 @@ def my_go2_stair_env_cfg(
           "command_name": "twist",
           "foothold_term": "foothold_hard_tracking",
           "bonus_scale": 1.5,
-          "only_last_seconds": 2.0,
+          "only_last_seconds": 4.0,
           "goal_weight": 1.0 / 3.0,
           "velocity_weight": 1.0 / 3.0,
           "posture_weight": 1.0 / 3.0,
@@ -386,10 +400,10 @@ def my_go2_stair_env_cfg(
           "posture_sigma": 0.15,
       },
   )
-  # 训练 episode 上限 10 秒: 0.45 m/s 爬 3 m 约需 6.8 s, 留出起步/抬腿
-  # 和最后 2 秒奖励窗口; 未到顶会被 time_out 计失败.
+  # 训练 episode 上限 15 秒: 终点外移到 y=4.2 后, 0.4 m/s 爬 4 m 约需
+  # 10~12 s, 留出起步/落脚和最后 4 秒终点保持窗口.
   if not play:
-    cfg.episode_length_s = 10.0
+    cfg.episode_length_s = 15.0
 
   cfg.events = {
           "reset_base": EventTermCfg(

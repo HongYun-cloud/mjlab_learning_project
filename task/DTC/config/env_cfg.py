@@ -329,11 +329,11 @@ def my_go2_stair_env_cfg(
            # 0.30 m, 避免跨过 0.3 m 踏面后落在台阶边缘/立面.
            forward_speed=0.40,
           switch_steps=750,    # 750 steps × 0.02s/step = 15s
-          center_threshold=0.3,
+          center_threshold=0.1,
           # north_peak 模式: 速度恒指向 patch 正北方向台阶区外的平地
           # (origin + (0, 4.2): 台阶区外缘 ~3.0 m, 终点在加宽后的平台上),
           # 头部朝向恒北 (+y 为北, yaw=π/2, wz P 控制对齐),
-          # 到达目标 (< 0.3 m) 后原地站立, 不再切下楼。
+          # 到达目标 (< 0.1 m) 后才算到达并开始给终点保持分, 不再切下楼。
           target_mode="north_peak",
           target_offset_w=(0.0, 4.2),
           face_heading=math.pi / 2,

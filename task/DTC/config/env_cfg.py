@@ -207,7 +207,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   # Apply play mode overrides.
   if play:
     # Effectively infinite episode length.
-    cfg.episode_length_s = int(1e9)
+    # cfg.episode_length_s = int(1e9)
 
     # play 打开全部调试可视化 (训练默认全关: velocity_env_cfg 基础 cfg 与
     # 各命令项 cfg 的 debug_vis 均为 False, 仅此处恢复)。
@@ -355,11 +355,13 @@ def my_go2_stair_env_cfg(
   foothold_cmd.in_place_gait_enable = True
   for _opt in (foothold_cmd.optimizer_cfg, foothold_cmd.planner_cfg.optimizer_cfg):
       _opt.nominal_cmd_blend = 0.5
-      _opt.max_step_offset = 0.30
+      # 踏面宽 0.30 m; 13 cm 台阶上留出更安全的落点中心余量,
+      # 避免脚/大腿落到台阶鼻线或下一级立面上.
+      _opt.max_step_offset = 0.26
 
   # 步频: 默认 trot 周期 0.6 s (每腿 1.67 Hz) 在 play 里显得很快;
   # 拉长到 0.8 s (每腿 1.25 Hz), 落脚节奏更慢.
-  # 0.40 m/s × 0.8 s = 0.32 m, 由 max_step_offset=0.30 限制到踏面长度.
+  # 0.40 m/s × 0.8 s = 0.32 m, 由 max_step_offset=0.26 限制.
   foothold_cmd.gait_cfg.stride_duration = 0.8
 
   # 3~10 cm 的台阶上, ±0.1 m 的高度扫描噪声会把台阶完全淹没;
@@ -367,6 +369,14 @@ def my_go2_stair_env_cfg(
   cfg.observations["actor"].terms["height_scan"].noise = Unoise(
       n_min=-0.05, n_max=0.05
   )
+
+  # 难度 4 的台阶高度 = 0.30 * 4/9 ≈ 0.133 m. 默认 0.10 m 的摆动
+  # 目标高度不足以越过台阶立面, 脚会踢到 step 边缘并带动大腿撞台阶.
+  # 只对楼梯任务把摆动峰值提高到 0.16 m, 并加强低抬脚惩罚.
+  _swing = cfg.rewards.get("foot_swing_height")
+  if _swing is not None:
+      _swing.params["target_height"] = 0.16
+      _swing.weight = -2.0
 
   # 大腿 10 N 接触就终止过于严格: 楼梯上正常擦碰台阶立面也会误判,
   # 日志中 illegal_contact 占终止的 38%. 抬高到 50 N, 仍能抓住真实卡死.

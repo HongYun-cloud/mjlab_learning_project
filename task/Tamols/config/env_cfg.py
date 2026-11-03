@@ -214,7 +214,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
 def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Create Unitree Go2 flat terrain tracking configuration."""
   cfg = my_go2_stair_env_cfg(play=play)
-  cfg.observations["actor"].terms["stair_boolean"].params["is_stair"] = False
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "flat"
   cfg.sim.njmax = 300
   cfg.sim.mujoco.ccd_iterations = 50
   cfg.sim.contact_sensor_maxmatch = 64
@@ -298,9 +298,9 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     },
   )
 
-  # 6. 设置平地任务标志位（is_stair = False）
-  if "stair_boolean" in cfg.observations["actor"].terms:
-    cfg.observations["actor"].terms["stair_boolean"].params["is_stair"] = False
+  # 6. 设置地形选项（平地）
+  if "terrain_type" in cfg.observations["actor"].terms:
+    cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "flat"
 
   if "Tamols_footholds" not in cfg.commands:
     cfg.commands["Tamols_footholds"] = TamolsFootholdCommandCfg(
@@ -326,7 +326,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 def my_go2_stair_env_cfg(
     play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["stair_boolean"].params["is_stair"] = True
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "stairs"
   cfg.observations["critic"].terms.pop("height_scan", None)
   # 保留前向雷达传感器以供 TAMOLS 落脚点感知与高程规划使用
   remove_sensors = set()
@@ -483,8 +483,8 @@ def my_go2_tire_env_cfg(
       ),
   }
 
-  if "stair_boolean" in cfg.observations["actor"].terms:
-    cfg.observations["actor"].terms["stair_boolean"].params["is_stair"] = False
+  if "terrain_type" in cfg.observations["actor"].terms:
+    cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "tire_array"
 
   if play:
     cfg.scene.terrain.max_init_terrain_level = 5
@@ -493,7 +493,7 @@ def my_go2_tire_env_cfg(
 
 def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["stair_boolean"].params["is_stair"] = True
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
   cfg.observations["critic"].terms.pop("height_scan", None)
   cfg.scene.terrain = TerrainEntityCfg(
             terrain_type="generator",

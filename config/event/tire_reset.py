@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+import os
+
 import torch
 
 from mjlab.entity import Entity
@@ -16,6 +18,7 @@ def reset_root_state_from_tire(
     velocity_range: dict[str, tuple[float, float]],
     asset_cfg: str = "robot",
     nominal_height: float = 0.28,
+    specified_level: int | str | None = None,
 ):
     """Reset robot root state on the flat spawn platform of the tire array."""
     if len(env_ids) == 0:
@@ -23,6 +26,41 @@ def reset_root_state_from_tire(
 
     num_resets = len(env_ids)
     asset = env.scene[asset_cfg]
+
+    # 0. 应用 Viser/GUI 指定的地形难度等级（Level 0 ~ num_rows-1）。
+    terrain = getattr(env.scene, "terrain", None)
+    if (
+        terrain is not None
+        and hasattr(terrain, "terrain_levels")
+        and getattr(terrain, "terrain_origins", None) is not None
+    ):
+        target_lvl = getattr(env, "specified_terrain_level", None)
+        if target_lvl is None and specified_level is not None:
+            target_lvl = specified_level
+        if target_lvl is None:
+            env_var = os.getenv("TIRE_LEVEL") or os.getenv("TERRAIN_LEVEL")
+            if env_var is not None:
+                try:
+                    target_lvl = int(env_var)
+                except ValueError:
+                    target_lvl = env_var
+
+        if target_lvl is not None:
+            num_rows = terrain.terrain_origins.shape[0]
+            if str(target_lvl).lower() == "random" or target_lvl == -1:
+                terrain.terrain_levels[env_ids] = torch.randint(
+                    0, num_rows, (num_resets,), device=env.device
+                )
+            else:
+                try:
+                    lvl = max(0, min(int(target_lvl), num_rows - 1))
+                    terrain.terrain_levels[env_ids] = lvl
+                except (ValueError, TypeError):
+                    pass
+
+            env.scene.env_origins[env_ids] = terrain.terrain_origins[
+                terrain.terrain_levels[env_ids], terrain.terrain_types[env_ids]
+            ]
 
     # 1. 克隆默认状态
     root_states = asset.data.default_root_state[env_ids].clone()

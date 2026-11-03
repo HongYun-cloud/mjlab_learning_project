@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 import torch
 
@@ -47,11 +47,19 @@ class DTCFootholdCommandCfg(TamolsMotionCommandCfg):
     show_nominal_dots: bool = True
     """ nominal 蓝点默认显示 (对比重规划是否偏离初值)."""
 
+    replan_on_any_touchdown: bool = True
+    """论文 TAMOLS: 每个 leg touch-down 事件求解一次。
+
+    trot 中两条对角腿同时触地，实际触发频率与“每个对角对一次”相同；
+    单腿提前触地时不再等待同对的另一条腿。
+    """
+
     replan_after_all_four_touchdowns: bool = False
-    """DTC 速度任务默认: 每对对角腿 (FL+RR / FR+RL) 都落地一次就重规划一次;
-    指令突变/环境重置仍即时触发。相比整周期模式响应更快, 相比任意单腿
-    触地触发更不容易被单腿抖动带偏；规划频率约每 0.4 s 一次
-    (stride=0.8 s 时)。"""
+    """保留的整周期开关；当 ``replan_on_any_touchdown=True`` 时不生效。
+
+    DTC 速度任务默认由 ``replan_on_any_touchdown`` 在每次触地时重规划；
+    指令突变/环境重置仍即时触发。
+    """
 
     swing_obs_enable: bool = True
     """是否组装摆动腿观测 (第一步: 见 swing_leg 模块文档).
@@ -70,6 +78,101 @@ class DTCFootholdCommandCfg(TamolsMotionCommandCfg):
 
     in_place_cmd_threshold: float = 0.04
     """判定原地踏步模式的最大水平命令速度 (m/s)."""
+
+    # ---- 规划器后端: 轻量 grid 或完整 NLP ----
+    planner_mode: Literal["grid", "nlp"] = "grid"
+    """落脚点规划后端。
+
+    - ``grid``: fetch 的 Raibert 标称点 + 邻域离散网格地形优化（轻量后端）；
+    - ``nlp``: 用 C++/CppAD 求解器把 ``desired_footholds`` 直接作为
+      决策变量，与机身样条轨迹联合优化。默认异步，主循环不阻塞；
+      超过 ``nlp_max_envs`` 时自动回退 grid。
+    """
+
+    nlp_max_envs: int = 4
+    """启用 NLP 模式允许的最大环境数；超过时自动回退到 grid 并打印警告。"""
+
+    nlp_solver: Literal["gn_sqp", "ipopt"] = "gn_sqp"
+    """Python 侧 NLP 求解后端（仅 nlp_solver_backend='python' 时使用）。"""
+
+    nlp_solver_backend: Literal["python", "cpp"] = "cpp"
+    """求解器实现：``cpp`` 为 C++/Eigen+CppAD+QuadProg++，``python`` 为
+    原 CasADi 实现。默认 C++。"""
+
+    nlp_samples_per_phase: int = 25
+    """轨迹导出时每个相位的采样点数。"""
+
+    nlp_max_iter: int = 60
+    """Python/CasADi 路径的最大迭代次数。"""
+
+    nlp_real_max_iter: int = 20
+    """真实 NLP 在 Layer 1/2 热启动后的首轮最大迭代数（截断求解）。"""
+
+    nlp_real_first_iter: int = 20
+    """首轮截断迭代数：先跑这么多次，已可行则不再继续。
+
+    对应论文 graduated optimization 的“先少量迭代看是否足够”。
+    注意：取 5 时虽然更快，但零速度站立时也会接受未收敛的落脚点，
+    造成 xy 抖动；默认取满首轮预算，数值优先。
+    """
+
+    nlp_real_max_iter2: int = 40
+    """首轮未接受时从当前点继续的最大迭代数。"""
+
+    nlp_jit: bool = False
+    """是否启用 GN-SQP 的 CasADi JIT（首次编译约 30 s，之后更快）。"""
+
+    nlp_fallback_to_grid: bool = True
+    """NLP 求解失败时是否回退到 grid 规划器。"""
+
+    nlp_accept_last_iterate: bool = True
+    """GN-SQP 达到 max_iter 但最后迭代点已接近可行时，是否接受该点。"""
+
+    nlp_max_violation: float = 5e-3
+    """接受最后迭代点允许的最大约束违反量。"""
+
+    nlp_friction_mode: Literal["enabled", "disabled"] = "disabled"
+    """NLP 摩擦锥约束。论文摩擦符号在本仓库仍是待核实项，默认关闭；
+    需要严格摩擦可行性时设为 enabled，并配合 nlp_friction_cone_form。"""
+
+    nlp_friction_cone_form: Literal[
+        "paper_literal", "force_balance_derived"
+    ] = "force_balance_derived"
+    """摩擦锥公式。``force_balance_derived`` 是论文内部证据派生的自洽形式；
+    ``paper_literal`` 保留论文印刷式（静止点不可行，仅用于对照）。"""
+
+    nlp_inertial_accel_sign: Literal[
+        "paper_literal", "contact_normal_explicit"
+    ] = "contact_normal_explicit"
+    """GIAC/摩擦的惯性加速度符号约定。``contact_normal_explicit`` 为
+    物理自洽的接触法向形式；``paper_literal`` 为论文印刷式。"""
+
+    nlp_verbose: bool = False
+    """是否打印每次 NLP 求解的状态/耗时。"""
+
+    nlp_compare_python: bool = False
+    """调试: 每次 C++ 求解后同时跑 Python GN-SQP，并打印解差异。"""
+
+    nlp_async: bool = True
+    """是否用后台线程异步求解 C++ NLP；主循环立即用上一份结果/grid 继续。"""
+
+    nlp_layer1: bool = True
+    """论文 V-D2: 先用 h_s2 虚拟地面解一层简化 TO，作为真实 NLP 的热启动。"""
+
+    nlp_layer1_max_iter: int = 20
+    """Layer 1 简化 TO 的最大 GN-SQP 迭代数。"""
+
+    nlp_layer2: bool = True
+    """论文 V-D3: 在上一轮落脚点周围做 0.4 m batch search 细化。"""
+
+    nlp_layer2_radius: float = 0.4
+    """Layer 2 搜索半径 [m]。"""
+
+    nlp_layer2_resolution: float = 0.02
+    """Layer 2 搜索分辨率 [m]。"""
+
+    nlp_layer2_gpu_min_points: int = 20000
+    """候选点总数低于该值时 Layer 2 用 CPU：小批量 GPU kernel 反而更慢。"""
 
     def build(self, env) -> "DTCFootholdCommand":
         """构建 DTC 子类实例 (父类 build 返回 TamolsMotionCommand,
@@ -108,6 +211,40 @@ class DTCFootholdCommand(TamolsMotionCommand):
     def __init__(self, cfg, env):
         super().__init__(cfg, env)
         self._post_super_init()
+
+        # 规划器后端: 默认 fetch 的 grid；NLP 只替换 plan_motion，
+        # Raibert 标称点仍由原 grid 规划器提供，作为 NLP 初值。
+        self._grid_planner = self.torch_planner
+        self._nlp_planner = None
+        if getattr(self.cfg, "planner_mode", "grid") == "nlp":
+            max_envs = int(getattr(self.cfg, "nlp_max_envs", 4))
+            if self.num_envs > max_envs:
+                print(
+                    f"[NLP] planner_mode='nlp' 但 num_envs={self.num_envs} > "
+                    f"nlp_max_envs={max_envs}，继续使用 grid planner。"
+                    " 如需强制 NLP，请增大 nlp_max_envs 并接受 ~0.5 s/次的求解耗时。"
+                )
+            else:
+                from myrobot_mjlab.task.DTC.tamols.nlp_planner import (
+                    NLPFootholdPlanner,
+                )
+
+                self._nlp_planner = NLPFootholdPlanner(
+                    command=self,
+                    base_planner=self.torch_planner,
+                    cfg=self.cfg,
+                )
+                self.torch_planner = self._nlp_planner
+                print(
+                    f"[NLP] 启用 IntegratedNLP 落脚点规划 "
+                    f"(num_envs={self.num_envs}, backend={self.cfg.nlp_solver_backend}, qp=quadprog_cpp)"
+                )
+
+        # “每次触地”只对 NLP 模式生效；grid 训练仍用原来的对角对/整周期
+        # 触发，避免 1024 env 的 grid 回退路径被改频率。
+        if self._nlp_planner is None:
+            self.cfg.replan_on_any_touchdown = False
+
         self._elevation_map_ui = None
         if self.cfg.map_ui_enable:
             try:
@@ -192,6 +329,8 @@ class DTCFootholdCommand(TamolsMotionCommand):
             self, "_swing_builder", None
         ) is not None:
             self._swing_builder.reset(env_ids)
+        if getattr(self, "_nlp_planner", None) is not None:
+            self._nlp_planner.reset(env_ids)
 
     # -- viewer 课程难度控制 (复制自 track 的 AllTrackingCommand 方案) ---- #
     def create_gui(

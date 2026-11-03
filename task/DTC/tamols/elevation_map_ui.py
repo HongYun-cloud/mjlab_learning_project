@@ -308,7 +308,7 @@ class ElevationMapUI:
         actual_port = self.server.get_port()
         url = f"http://127.0.0.1:{actual_port}"
         print(f"[ElevationMapUI] 独立 3D 高程图窗口已启动: {url}")
-        if os.getenv("TAMOLS_MAP_UI_OPEN_BROWSER", "1") != "0":
+        if os.getenv("TAMOLS_MAP_UI_OPEN_BROWSER", "0") == "1":
             # Best effort: desktop environments open this in the default browser.
             # Remote/headless sessions still get the printed URL.
             timer = threading.Timer(1.0, self._open_browser, args=(url,))

@@ -141,12 +141,18 @@ def terrain_levels_reach_target(
     asset_cfg: SceneEntityCfg = _DEFAULT_SCENE_CFG,
 ) -> dict[str, torch.Tensor]:
     """Curriculum: advance terrain level (or target distance) when the robot reaches
-    the target point (within ``distance_threshold``, default 0.05m = 5cm) multiple times
-    (``required_reach_count``, default 3).
+    the target point multiple times (``required_reach_count``, default 3).
+
+    到达判定
+    --------
+    - 若环境中存在 ``reach_target`` 终止项，使用该终止项；
+    - 否则读取 ``reach_target_success`` metric 的 episode 最大值
+      （Track 使用 0.15m 距离判定，episode 内曾经到达即算一次）；
+    - 两者都没有时，退化为 reset 时刻的 ``distance_threshold`` 距离判断。
 
     升阶规则 (Level Up)
     -------------------
-    环境在当前难度下成功到达目标点 5cm 以内累计达到 ``required_reach_count`` 次（默认 3 次），
+    环境在当前难度下成功到达目标点累计达到 ``required_reach_count`` 次（默认 3 次），
     判定为已经掌握当前难度，触发升阶（楼梯高度变高 / 平地目标距离增大）。
 
     降阶规则 (Level Down)
@@ -164,9 +170,16 @@ def terrain_levels_reach_target(
     if len(env_ids) == 0:
         return {}
 
-    # 1. 判断本次 reset 的环境是否成功到达目标点 5cm 以内
+    # 1. 判断本次 reset 的环境是否在 episode 内到达过目标。
+    # 优先使用 reach_target 终止项（LALRT/Tamols 仍保留该终止）。
+    # 若没有该终止项，则读取 reach_target_success metric 的 episode 最大值；
+    # 这样 Track 可以在不终止 episode 的情况下，仍统计“曾经到达”的次数。
+    metrics_manager = getattr(env, "metrics_manager", None)
+    episode_max = getattr(metrics_manager, "_episode_max", None)
     if hasattr(env, "termination_manager") and "reach_target" in env.termination_manager.active_terms:
         reached = env.termination_manager.get_term("reach_target")[env_ids]
+    elif episode_max is not None and "reach_target_success" in episode_max:
+        reached = episode_max["reach_target_success"][env_ids] > 0.5
     else:
         asset: Entity = env.scene[asset_cfg.name]
         robot_pos = asset.data.root_link_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2]

@@ -44,7 +44,7 @@ from myrobot_mjlab.config.observation.Trackingobservation import (
   direction_to_goal,
   friction_coefficient,
   heading_to_goal_error,
-  stair_boolean,
+  terrain_type,
 )
 from myrobot_mjlab.config.reward.Trackingreward import (
   airborne_feet_penalty,
@@ -94,9 +94,11 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           func=heading_to_goal_error,
           params={"command_name": "Goal_direction"},
         ),
-        "stair_boolean": ObservationTermCfg(
-          func=stair_boolean,
-          params={"is_stair": False},
+        # 地形选项 one-hot: [平地, 楼梯, 轮胎阵, 沟壑/平台, 单木桥]
+        # 传 None 时根据场景地形自动推断；各任务可在 env_cfg 中显式覆盖。
+        "terrain_type": ObservationTermCfg(
+          func=terrain_type,
+          params={"terrain_type": None},
         ),
         "height_command": ObservationTermCfg(
           func=mdp.generated_commands,
@@ -116,6 +118,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           noise=Unoise(n_min=-1.5, n_max=1.5),
         ),
         "actions": ObservationTermCfg(func=mdp.last_action),
+        "height_scan": ObservationTermCfg(
+          func=envs_mdp.height_scan,
+          params={"sensor_name": "terrain_scan"},
+          noise=Unoise(n_min=-0.1, n_max=0.1),
+          scale=1 / terrain_scan.max_distance,
+        ),
       }
 
     critic_terms = {
@@ -148,12 +156,36 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           func=mdp.foot_contact_forces,
           params={"sensor_name": "feet_ground_contact"},
         ),
-        "height_scan": ObservationTermCfg(
-          func=envs_mdp.height_scan,
-          params={"sensor_name": "terrain_scan"},
-          noise=Unoise(n_min=-0.1, n_max=0.1),
-          scale=1 / terrain_scan.max_distance,
-        ),
+      }
+
+    ##
+    # RND (Random Network Distillation) 内在好奇心奖励输入
+    ##
+    # 论文中的好奇心奖励使用状态-动作对 (s, a) 作为输入。这里复用 actor
+    # 观测项，但去掉噪声/延迟/历史，并把上一时刻动作 "actions" 也纳入，
+    # 因此 RND 实际看到的是 (s_t, a_{t-1})。
+    # terrain_type 是任务常量（同一任务内始终相同），不提供新颖性，故排除。
+    def _rnd_term(name: str) -> ObservationTermCfg:
+        return replace(
+          actor_terms[name],
+          noise=None,
+          delay_min_lag=0,
+          delay_max_lag=0,
+          history_length=0,
+        )
+
+    rnd_terms = {
+        name: _rnd_term(name)
+        for name in (
+          "base_ang_vel",
+          "direction_goal",
+          "head_error",
+          "height_command",
+          "projected_gravity",
+          "joint_pos",
+          "joint_vel",
+          "actions",
+        )
       }
 
     ## enable_corruption 扰动开关
@@ -165,6 +197,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         ),
         "critic": ObservationGroupCfg(
           terms=critic_terms,
+          concatenate_terms=True,
+          enable_corruption=False,
+        ),
+        # RND 输入组：不经过观测噪声，由 PPO 的 RND 扩展单独使用。
+        "rnd_state": ObservationGroupCfg(
+          terms=rnd_terms,
           concatenate_terms=True,
           enable_corruption=False,
         ),
@@ -184,7 +222,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         reduce="max",
         params={
           "command_name": "Goal_direction",
-          "distance_threshold": 0.05,
+          "distance_threshold": 0.15,
         },
       ),
     }
@@ -208,13 +246,13 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           target_distance=3.2,
           cardinal_directions=("E", "N", "W", "S"),
           resampling_time_range=(10.0, 10.0),
+          resample_on_timer=False,
           debug_vis=False,
         ),
         "Base_height_target": HeightTargetCommandCfg(
           entity_name="robot",
           nominal_height=0.28,
           foot_body_names=("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
-          is_stair=False,
           height_smooth_alpha=0.05,
           resampling_time_range=(4.0, 10.0),
           debug_vis=True,
@@ -266,10 +304,11 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         weight=1.5,
         params={"command_name": "Goal_direction"},
       ),
+      # 机身高度奖励：仅跟踪 Base_height_target 高度指令。
       "track_base_height": RewardTermCfg(
         func=track_base_height,
         weight=1.5,
-        params={"command_name": "Base_height_target", "std": 0.04},
+        params={"std": 0.04},
       ),
       "stall_penalty": RewardTermCfg(
         func=stall_penalty,
@@ -344,16 +383,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "sensor_name": "feet_ground_contact",
         },
       ),
-      # 空中腿数惩罚：三条或四条腿同时在空中（即支撑腿 <= 1 条）时扣分。
-      # 不强求对角步态，允许自然行走/漫步/对角走，但杜绝三腿起跳、全腾空跃进的投机跳跃步态。
-      "airborne_feet_penalty": RewardTermCfg(
-        func=airborne_feet_penalty,
-        weight=-1.0,
-        params={
-          "sensor_name": "feet_ground_contact",
-          "max_airborne_feet": 2,
-        },
-      ),
+
       "joint_acc": RewardTermCfg(
         func=envs_mdp.joint_acc_l2,
         weight=-2.5e-7,
@@ -367,14 +397,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     
     terminations = {
       "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
-      "reach_target": TerminationTermCfg(
-        func=reach_target,
-        time_out=True,
-        params={
-          "command_name": "Goal_direction",
-          "distance_threshold": 0.05,
-        },
-      ),
       "fell_over": TerminationTermCfg(
         func=mdp.bad_orientation,
         params={"limit_angle": math.radians(70.0)},
@@ -399,7 +421,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         func=terrain_levels_reach_target,
         params={
           "command_name": "Goal_direction",
-          "distance_threshold": 0.05,
+          "distance_threshold": 0.15,
           "required_reach_count": 3,
         },
       ),
@@ -443,5 +465,5 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         ),
       ),
       decimation=4,
-      episode_length_s=10.0,
+      episode_length_s=15.0,
   )

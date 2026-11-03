@@ -1,20 +1,22 @@
 #!/bin/bash
 
 # ==============================
-# Go2 Flat Track Play
+# Go2 Flat Tracking Play
 # ==============================
 
-MODEL=$(find -L wandb/latest-run/files \
-  -maxdepth 1 -type f -name 'model_*.pt' \
-  | sort -V | tail -n 1)
+# 切到仓库根目录，保证从任意目录执行时相对路径都正确
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
+
+source "$SCRIPT_DIR/lib_play_args.sh"
+play_parse_args "$@"
+
+TASK="Mjlab-Tracking-Flat-Unitree-Go2"
 
 echo "加载模型：$MODEL"
 
-TASK="Mjlab-Tracking-Flat-Unitree-Go2"
-RUN_NAME="$1"
-
 echo "======================================"
-echo "       Go2 Flat Track Play"
+echo "       Go2 Flat Tracking Play"
 echo "======================================"
 echo "Task:      $TASK"
 echo "Run name:  $RUN_NAME"

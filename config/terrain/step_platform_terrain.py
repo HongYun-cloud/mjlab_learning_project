@@ -67,13 +67,29 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
     """是否启用后方的第二平台与间隔 (默认 True)"""
 
     gap_distance: float | None = None
-    """两平台之间的固定间距 (单位: 米)。若为 None 则使用 gap_distance_range 按 difficulty 自动插值"""
+    """平台之间的固定间距 (单位: 米)。若为 None 则使用 gap_distance_range 按 difficulty 自动插值"""
 
     gap_distance_range: tuple[float, float] = (0.20, 0.60)
-    """间距的课程变化范围 (单位: 米，默认 20cm ~ 60cm，随 difficulty 从 0 到 1 逐渐拉宽)"""
+    """平台间距的课程变化范围 (单位: 米，默认 20cm ~ 60cm，随 difficulty 从 0 到 1 逐渐拉宽)"""
 
     vary_gap_with_difficulty: bool = True
     """是否随课程难度调节间距大小"""
+
+    # --- 3.1 中间小平台 (Stepping Stones) ---
+    num_mid_platforms: int = 0
+    """沟壑中间的小平台数量。0 表示原来的单个大沟壑。"""
+
+    mid_platform_length: float = 0.2
+    """中间小平台沿行进方向的长度 (米)。"""
+
+    mid_platform_width: float = 1.0
+    """中间小平台的横向宽度 (米)。"""
+
+    mid_platform_height: float = 0.36
+    """中间小平台顶面高度 (米)。"""
+
+    mid_platform_color: tuple[float, float, float, float] = (0.82, 0.55, 0.22, 1.0)
+    """中间小平台颜色 (琥珀色)。"""
 
     # --- 4. 第二个长方体平台参数 ---
     second_platform_length: float = 0.80
@@ -160,13 +176,15 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
             floor_geom.friction[f_idx] = f_val
         geometries.append(TerrainGeometry(geom=floor_geom, color=self.floor_color))
 
-        # 1. 确定两平台之间的有效间距 (effective_gap)
+        # 1. 确定相邻平台之间的有效间距 (effective_gap)
         if not self.has_second_platform:
             effective_gap = 0.0
             second_plat_len = 0.0
+            num_mid = 0
         elif self.gap_distance is not None:
             effective_gap = float(self.gap_distance)
             second_plat_len = self.second_platform_length
+            num_mid = max(0, int(self.num_mid_platforms))
         elif self.vary_gap_with_difficulty:
             # 根据课程难度在 [min_gap, max_gap] 之间线性插值
             diff = float(np.clip(difficulty, 0.0, 1.0))
@@ -174,18 +192,28 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
                 self.gap_distance_range[1] - self.gap_distance_range[0]
             )
             second_plat_len = self.second_platform_length
+            num_mid = max(0, int(self.num_mid_platforms))
         else:
             effective_gap = self.gap_distance_range[0]
             second_plat_len = self.second_platform_length
+            num_mid = max(0, int(self.num_mid_platforms))
 
         # 2. 计算各部分沿行进方向的长度与全长
         up_stairs_length = self.num_steps * self.step_width
         down_stairs_length = self.num_steps * self.step_width if self.add_down_stairs else 0.0
 
+        # 中间小平台总长度；num_mid=0 时退化为原来的单个大沟壑。
+        mid_platforms_length = num_mid * self.mid_platform_length
+        total_gap = (
+            (num_mid + 1) * effective_gap + mid_platforms_length
+            if self.has_second_platform
+            else 0.0
+        )
+
         total_travel_length = (
             up_stairs_length
             + self.platform_length
-            + (effective_gap + second_plat_len if self.has_second_platform else 0.0)
+            + (total_gap + second_plat_len if self.has_second_platform else 0.0)
             + down_stairs_length
         )
 
@@ -226,9 +254,29 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
             )
         )
 
+        # (b2) 沟壑中间的小平台：平台1 -> gap -> mid1 -> gap -> ... -> midN -> gap -> 平台2
+        if self.has_second_platform and num_mid > 0:
+            for i in range(num_mid):
+                mid_travel_start = (
+                    up_stairs_length
+                    + self.platform_length
+                    + (i + 1) * effective_gap
+                    + i * self.mid_platform_length
+                )
+                parts.append(
+                    (
+                        f"mid_platform_{i + 1}",
+                        mid_travel_start,
+                        self.mid_platform_length,
+                        self.mid_platform_width,
+                        self.mid_platform_height,
+                        self.mid_platform_color,
+                    )
+                )
+
         # (c) 第二个长方体小平台 (80cm × 80cm × 36cm)，位于间隔之后
         if self.has_second_platform:
-            plat2_travel_start = up_stairs_length + self.platform_length + effective_gap
+            plat2_travel_start = up_stairs_length + self.platform_length + total_gap
             parts.append(
                 (
                     "platform_2",
@@ -400,6 +448,10 @@ def step_platform_terrain(**overrides: Any) -> StepPlatformTerrainCfg:
         gap_distance=None,
         gap_distance_range=(0.20, 0.60),
         vary_gap_with_difficulty=True,
+        num_mid_platforms=0,
+        mid_platform_length=0.2,
+        mid_platform_width=1.0,
+        mid_platform_height=0.36,
         second_platform_length=0.80,
         second_platform_width=0.80,
         second_platform_height=0.36,
@@ -422,8 +474,23 @@ STEP_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     sub_terrains={
         "step_platform": step_platform_terrain(
             proportion=1.0,
-            gap_distance_range=(0.20, 0.60),
+            # 横向加宽到 10m，覆盖整个 8×8 patch，防止机器人从平台/沟壑
+            # 两侧绕路；沿行进方向的长度仍保持 0.8m。
+            step_length=10.0,
+            platform_width=10.0,
+            second_platform_width=10.0,
+            # 中间加入 5 个 10m(横向) × 0.2m(行进方向) 的落脚平台。
+            # 相邻平台间隙随地形难度在 0.01~0.50m 变化（低难度几乎连成平台，高难度需跳）。
+            num_mid_platforms=5,
+            mid_platform_length=0.2,
+            mid_platform_width=10.0,
+            mid_platform_height=0.36,
+            gap_distance_range=(0.01, 0.50),
             vary_gap_with_difficulty=True,
+            # 起点放在台阶前方的基准地面上（平台下方），先爬上第一平台，
+            # 再跨越中间的沟壑落到第二平台。
+            spawn_on_platform=False,
+            spawn_distance_before=1.5,
         ),
     },
     add_lights=True,

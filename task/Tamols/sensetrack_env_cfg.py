@@ -55,7 +55,7 @@ from myrobot_mjlab.config.observation import (
   heading_to_goal_error,
   planar_footholds,
   reference_twist,
-  stair_boolean,
+  terrain_type,
   time_left_in_phase,
 )
 from myrobot_mjlab.config.reward.Trackingreward import (
@@ -139,9 +139,9 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           func=base_twist,
           params={"in_body_frame": True},
         ),
-        "stair_boolean": ObservationTermCfg(
-          func=stair_boolean,
-          params={"is_stair": False},
+        "terrain_type": ObservationTermCfg(
+          func=terrain_type,
+          params={"terrain_type": None},
         ),
         "projected_gravity": ObservationTermCfg(
           func=mdp.projected_gravity,

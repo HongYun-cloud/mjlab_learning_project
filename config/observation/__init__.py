@@ -1,10 +1,14 @@
 from .Trackingobservation import (
+    NUM_TERRAIN_TYPES,
+    TERRAIN_TYPE_NAMES,
+    TerrainType,
     base_height,
     direction_real,
     direction_to_goal,
     friction_coefficient,
     heading_to_goal_error,
-    stair_boolean,
+    resolve_terrain_type,
+    terrain_type,
 )
 from .Tamolsobservation import (
     base_twist,
@@ -24,9 +28,13 @@ from .Tamolsobservation import (
 
 __all__ = [
     # Tracking
+    "TerrainType",
+    "TERRAIN_TYPE_NAMES",
+    "NUM_TERRAIN_TYPES",
+    "resolve_terrain_type",
+    "terrain_type",
     "direction_to_goal",
     "heading_to_goal_error",
-    "stair_boolean",
     "base_height",
     "direction_real",
     "friction_coefficient",

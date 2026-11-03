@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
+import torch.nn.functional as F
 
 from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
@@ -98,12 +100,16 @@ def track_target_bias(
     command_name: str = "Goal_direction",
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     eps: float = 1e-6,
+    goal_deadzone: float = 0.0,
     **kwargs,
 ) -> torch.Tensor:
     r"""Reward for tracking target bias: cosine similarity between velocity and direction to goal.
 
     Formula:
         (\dot{x} \cdot (r_{goal} - x)) / (||\dot{x}|| * ||r_{goal} - x||)
+
+    ``goal_deadzone``: 距离目标小于该值时直接返回 0，避免终点附近方向
+    向量过小导致奖励抖动。
     """
     asset: Entity = env.scene[asset_cfg.name]
     robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
@@ -118,30 +124,39 @@ def track_target_bias(
 
     dot = torch.sum(vel * to_goal, dim=-1)
     denom = torch.clamp(vel_norm * to_goal_norm, min=eps)
-    return dot / denom
+    reward = dot / denom
+    if goal_deadzone > 0.0:
+        reward = torch.where(
+            to_goal_norm > goal_deadzone,
+            reward,
+            torch.zeros_like(reward),
+        )
+    return reward
 
 
 def track_base_height(
     env: ManagerBasedRlEnv,
-    command_name: str = "Base_height_target",
     std: float = 0.04,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     **kwargs,
 ) -> torch.Tensor:
-    """Reward tracking commanded base height (relative to env origin).
+    """Reward tracking the ``Base_height_target`` command.
 
     Formula:
-        exp(-((z_base - z_target) / std)^2)
+        exp(-((z_base - Base_height_target) / std)^2)
+
+    仅使用命令项 ``Base_height_target`` 作为高度输入；命令项不存在时返回 0。
     """
     asset: Entity = env.scene[asset_cfg.name]
     base_z = asset.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
 
-    if command_name in env.command_manager.active_terms:
-        target_z = env.command_manager.get_command(command_name)
-        if target_z.ndim > 1:
-            target_z = target_z.squeeze(-1)
-    else:
-        target_z = 0.28
+    if "Base_height_target" not in env.command_manager.active_terms:
+        return torch.zeros_like(base_z)
+
+    target_z = env.command_manager.get_command("Base_height_target")
+    if target_z.ndim > 1:
+        target_z = target_z.squeeze(-1)
+    target_z = target_z.to(device=base_z.device, dtype=base_z.dtype)
 
     z_error = base_z - target_z
     return torch.exp(-torch.square(z_error / std))
@@ -167,15 +182,17 @@ def stall_penalty(
     command_name: str = "Goal_direction",
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     vel_threshold: float = 0.1,
-    dist_threshold: float = 0.3,
+    dist_threshold: float = 0.1,
     penalty_value: float = -2.0,
     **kwargs,
 ) -> torch.Tensor:
     """Penalty for stalling when far away from the goal.
 
     Formula:
-        penalty_value (-2.0)  if ||x_dot|| < 0.1 m/s and ||x - r_goal|| > 0.5 m
+        penalty_value (-2.0)  if ||x_dot|| < 0.1 m/s and ||x - r_goal|| > 0.1 m
         0                     otherwise
+
+    目标点 0.1m 范围内不惩罚，允许机器人到点后停稳/站立。
     """
     asset: Entity = env.scene[asset_cfg.name]
     robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
@@ -508,3 +525,77 @@ def base_vertical_velocity_penalty(
     vz = asset.data.root_link_lin_vel_b[:, 2]
     return torch.square(vz)
 
+
+# ==============================================================================
+# 安全落脚奖励：平滑高程图 + 平地检测 + 落地高度差惩罚
+# ==============================================================================
+
+def _normalized_gaussian_blur(
+    values: torch.Tensor,
+    valid: torch.Tensor,
+    kernel_size: int = 5,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """对 [B, H, W] 高程图做带有效 mask 的归一化高斯平滑。"""
+    device = values.device
+    coords = torch.arange(kernel_size, device=device, dtype=values.dtype)
+    coords = coords - (kernel_size - 1) / 2.0
+    sigma = max(kernel_size / 5.0, 1e-6)
+    g = torch.exp(-0.5 * (coords / sigma) ** 2)
+    kernel = (g[:, None] * g[None, :]).view(1, 1, kernel_size, kernel_size)
+    kernel = kernel / kernel.sum()
+
+    values = values.unsqueeze(1)
+    valid = valid.unsqueeze(1).to(dtype=values.dtype)
+    pad = kernel_size // 2
+    numerator = F.conv2d(values * valid, kernel, padding=pad)
+    denominator = F.conv2d(valid, kernel, padding=pad)
+    smooth = numerator.squeeze(1) / denominator.squeeze(1).clamp_min(1e-6)
+    return smooth, denominator.squeeze(1)
+
+
+def _bilinear_sample_grid(
+    grid: torch.Tensor,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    x_min: float,
+    y_min: float,
+    resolution: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """在 [B, 1, H, W] 网格上按局部坐标做双线性采样。"""
+    batch, _, height, width = grid.shape
+    fx = (x - x_min) / resolution
+    fy = (y - y_min) / resolution
+
+    in_bounds = (
+        (fx >= 0)
+        & (fx <= width - 1)
+        & (fy >= 0)
+        & (fy <= height - 1)
+    )
+
+    x0 = torch.floor(fx).long()
+    y0 = torch.floor(fy).long()
+    x1 = x0 + 1
+    y1 = y0 + 1
+    wx = (fx - x0.to(fx.dtype)).clamp(0.0, 1.0)
+    wy = (fy - y0.to(fy.dtype)).clamp(0.0, 1.0)
+
+    x0 = x0.clamp(0, width - 1)
+    x1 = x1.clamp(0, width - 1)
+    y0 = y0.clamp(0, height - 1)
+    y1 = y1.clamp(0, height - 1)
+
+    batch_idx = torch.arange(batch, device=grid.device).unsqueeze(1)
+    values = grid[:, 0]
+    v00 = values[batch_idx, y0, x0]
+    v10 = values[batch_idx, y0, x1]
+    v01 = values[batch_idx, y1, x0]
+    v11 = values[batch_idx, y1, x1]
+
+    sampled = (
+        v00 * (1.0 - wx) * (1.0 - wy)
+        + v10 * wx * (1.0 - wy)
+        + v01 * (1.0 - wx) * wy
+        + v11 * wx * wy
+    )
+    return sampled, in_bounds

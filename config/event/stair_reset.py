@@ -146,6 +146,8 @@ def idle_termination(
 def out_of_patch_bounds(
     env: ManagerBasedRlEnv,
     half_size: float = 4.0,
+    half_size_x: float | None = None,
+    half_size_y: float | None = None,
     margin: float = 0.3,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
@@ -154,22 +156,26 @@ def out_of_patch_bounds(
     与内置 out_of_terrain_bounds 不同：
     - 后者以整个地形 grid + border_width 为边界
       （楼梯地形 border_width=20m，几乎永不触发）
-    - 本函数以单个 sub-terrain patch 的半尺寸为边界，
-      机器人离开自己的 patch 即终止，强迫 episode reset。
+    - 本函数以机器人相对自身 env_origin 的位移为边界，
+      机器人离开允许区域即终止，强迫 episode reset。
 
     Parameters
     ----------
     half_size:
-        patch 的半边长（m），应与 terrain_generator.size[0] / 2 对应。
-        楼梯地形 size=(8, 8) → 默认 4.0 m。
+        默认的半边长（m）。楼梯地形 size=(8, 8) → 默认 4.0 m。
+    half_size_x:
+        可选，单独指定 X（行进方向）半边长；用于出生点不在 patch 中心的任务。
+    half_size_y:
+        可选，单独指定 Y（横向）半边长。
     margin:
-        安全裕量：在 half_size 内缩，避免台阶边缘误触发，默认 0.3 m。
+        安全裕量：在 half_size 内缩，避免边缘误触发，默认 0.3 m。
     """
     asset: Entity = env.scene[asset_cfg.name]
     # 机器人相对自身 env_origin 的 XY 位移
     rel_xy = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
-    limit = half_size - margin
-    out = (rel_xy[:, 0].abs() > limit) | (rel_xy[:, 1].abs() > limit)
+    limit_x = (half_size if half_size_x is None else half_size_x) - margin
+    limit_y = (half_size if half_size_y is None else half_size_y) - margin
+    out = (rel_xy[:, 0].abs() > limit_x) | (rel_xy[:, 1].abs() > limit_y)
     # 前 2 步跳过，避免 reset 后位置未同步时误触发
     out &= env.episode_length_buf > 2
     return out

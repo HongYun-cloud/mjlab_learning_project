@@ -1,26 +1,27 @@
-
 #!/bin/bash
 
 # ==============================
-# Go2 mjlab play
+# Go2 Flat Play
 # ==============================
 
-# 必须提供运行名称
-MODEL="src/myrobot_mjlab/model/flat_999.pt"
+# 切到仓库根目录，保证从任意目录执行时相对路径都正确
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-echo "加载模型：$MODEL"
+source "$SCRIPT_DIR/lib_play_args.sh"
+play_parse_args "$@"
 
 TASK="Mjlab-Velocity-Flat-Unitree-Go2"
 
-
+echo "加载模型：$MODEL"
 
 echo "======================================"
-echo "       Go2 Play"
+echo "       Go2 Flat Play"
 echo "======================================"
 echo "Task:      $TASK"
 echo "Run name:  $RUN_NAME"
 echo "======================================"
 
 uv run play "$TASK" \
-    --checkpoint-file "$MODEL"
-
+    --checkpoint-file "$MODEL" \
+    --viewer viser

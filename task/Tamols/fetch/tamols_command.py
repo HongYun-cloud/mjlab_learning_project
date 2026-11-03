@@ -72,6 +72,14 @@ class TamolsMotionCommandCfg(CommandTermCfg):
     replan_on_touchdown: bool = True
     """主要在腿触地 (Touchdown / 相切换) 时触发重新规划求解"""
 
+    replan_on_any_touchdown: bool = False
+    """任意一条腿触地就重规划；优先于 ``replan_after_all_four_touchdowns``。
+
+    论文 TAMOLS 在每个 leg touch-down 事件求解一次；trot 中两条对角腿
+    同时触地, 因此等价于每个对角对事件。设为 True 时不再等待同一对角
+    对的另一条腿, 单腿提前触地也会立即触发。
+    """
+
     replan_after_all_four_touchdowns: bool = True
     """整周期重规划 (默认): 单次触地不立即重规划, 每环境累计四条腿的触地
     事件, 四条腿都至少落地过一次 (即走完一个完整步态周期, 最后一条腿触地
@@ -699,7 +707,11 @@ class TamolsMotionCommand(CommandTerm):
             replan_mask = ~self.footholds_initialized
             if self.cfg.replan_on_touchdown:
                 touchdown = (prev_contacts < 0.5) & (curr_contacts > 0.5)
-                if self.cfg.replan_after_all_four_touchdowns:
+                if getattr(self.cfg, "replan_on_any_touchdown", False):
+                    # 任意一条腿触地即重规划（论文的每个 touch-down 事件）。
+                    replan_mask |= touchdown.any(dim=-1)
+                    self._td_since_replan |= touchdown
+                elif self.cfg.replan_after_all_four_touchdowns:
                     # 四条腿都各自落过一次地 (整周期) 才重规划一次
                     self._td_since_replan |= touchdown
                     replan_mask |= self._td_since_replan.all(dim=-1)
@@ -732,6 +744,8 @@ class TamolsMotionCommand(CommandTerm):
             # 避免低触发率下全 batch 规划再 mask 选取的无效计算。
             replan_idx = replan_mask.nonzero(as_tuple=True)[0]
             self.plan_last_batch = int(replan_idx.shape[0])
+            # NLP 适配器需要知道子集对应的环境下标 (构造步态 schedule / 地图).
+            self._last_replan_idx = replan_idx
 
             # -- 单次规划计算计时起点 (覆盖标称/卷积/plan_motion/写回全过程) --
             _t_plan0 = time.perf_counter()

@@ -207,6 +207,21 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
     params={"sensor_name": thigh_ground_cfg.name},
   )
 
+  # 规划器后端 (所有 DTC 变体共用): 默认 NLP，超过 nlp_max_envs 时由
+  # DTCFootholdCommand 自动回退 grid。可用 DTC_PLANNER_MODE=nlp/grid 覆盖。
+  _foothold_cmd = cfg.commands.get("Tamols_footholds")
+  if _foothold_cmd is not None:
+    _foothold_cmd.planner_mode = os.getenv("DTC_PLANNER_MODE", "nlp")
+    _foothold_cmd.nlp_max_envs = int(os.getenv("DTC_NLP_MAX_ENVS", "4"))
+    _foothold_cmd.nlp_verbose = os.getenv("DTC_NLP_VERBOSE", "0") == "1"
+    _foothold_cmd.nlp_compare_python = os.getenv("DTC_NLP_COMPARE", "0") == "1"
+    _foothold_cmd.nlp_async = os.getenv("DTC_NLP_ASYNC", "1") == "1"
+    _foothold_cmd.nlp_solver_backend = os.getenv("DTC_NLP_BACKEND", "cpp")
+    _foothold_cmd.nlp_layer1 = os.getenv("DTC_NLP_LAYER1", "1") == "1"
+    _foothold_cmd.nlp_layer2 = os.getenv("DTC_NLP_LAYER2", "1") == "1"
+    _foothold_cmd.nlp_real_max_iter = int(os.getenv("DTC_NLP_REAL_ITERS", "20"))
+    _foothold_cmd.nlp_real_max_iter2 = int(os.getenv("DTC_NLP_REAL_ITERS2", "40"))
+
   # Apply play mode overrides.
   if play:
     # Effectively infinite episode length.

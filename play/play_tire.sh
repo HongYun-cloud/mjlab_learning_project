@@ -1,28 +1,27 @@
-
 #!/bin/bash
 
 # ==============================
-# Go2 mjlab play
+# Go2 Tire Array Play
 # ==============================
 
-# 必须提供运行名称
-MODEL=$(find -L wandb/latest-run/files \
-  -maxdepth 1 -type f -name 'model_*.pt' \
-  | sort -V | tail -n 1)
+# 切到仓库根目录，保证从任意目录执行时相对路径都正确
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-echo "加载模型：$MODEL"
+source "$SCRIPT_DIR/lib_play_args.sh"
+play_parse_args "$@"
 
 TASK="Mjlab-Velocity-TireArray-Unitree-Go2"
 
-
+echo "加载模型：$MODEL"
 
 echo "======================================"
-echo "       Go2 Play"
+echo "       Go2 Tire Array Play"
 echo "======================================"
 echo "Task:      $TASK"
 echo "Run name:  $RUN_NAME"
 echo "======================================"
 
 uv run play "$TASK" \
-    --checkpoint-file "$MODEL"
-
+    --checkpoint-file "$MODEL" \
+    --viewer viser

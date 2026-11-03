@@ -58,7 +58,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       name="terrain_scan_map",
       frame=ObjRef(type="body", name="base_link", entity="robot"),
       ray_alignment="yaw",
-      pattern=GridPatternCfg(size=(2.4, 1.2), resolution=0.1),
+      pattern=GridPatternCfg(size=(2.4, 2.4), resolution=0.1),
       max_distance=5.0,
       exclude_parent_body=True,
       include_geom_groups=(0,),
@@ -243,8 +243,10 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           entity_name="robot",
           sensor_name="terrain_scan_map",
           foot_sensor_name="foot_height_scan",
-          x_range=(-1.0, 1.1),
-          y_range=(-0.6, 0.6),
+          # 论文 IV-A: 2.4 m x 2.4 m, 4 cm 栅格.
+          x_range=(-1.2, 1.2),
+          y_range=(-1.2, 1.2),
+          cell_size=0.04,
           # swing_obs 目前没有接入 actor 观测/奖励, 每步组装会白耗 ~1 ms;
           # 需要时再打开 (见 DTCFootholdCommandCfg.swing_obs_enable).
           swing_obs_enable=False,
@@ -466,17 +468,17 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         },
       ),
       "dof_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-1.0),
-      "air_time": RewardTermCfg(
-        func=mdp.feet_air_time,
-        weight=1.0,  # Override per-robot.
-        params={
-          "sensor_name": "feet_ground_contact",
-          "threshold_min": 0.05,
-          "threshold_max": 0.5,
-          "command_name": "twist",
-          "command_threshold": 0.5,
-        },
-      ),
+      # "air_time": RewardTermCfg(
+      #   func=mdp.feet_air_time,
+      #   weight=1.0,  # Override per-robot.
+      #   params={
+      #     "sensor_name": "feet_ground_contact",
+      #     "threshold_min": 0.05,
+      #     "threshold_max": 0.5,
+      #     "command_name": "twist",
+      #     "command_threshold": 0.5,
+      #   },
+      # ),
 
     }
 

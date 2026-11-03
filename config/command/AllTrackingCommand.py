@@ -38,6 +38,11 @@ class GoalDirectionCommandCfg(CommandTermCfg):
     target_distance: float = 3.2
     cardinal_directions: tuple[str, ...] = ("E", "N", "W", "S")
     resampling_time_range: tuple[float, float] = (10.0, 10.0)
+    resample_on_timer: bool = True
+    """是否允许命令计时器在 episode 中途重新采样目标点。
+
+    False 时目标点只在环境 reset 时生成一次，episode 内保持不变。
+    """
     debug_vis: bool = True
     print_reset_reason: bool = False
     """是否在终端打印每次重置原因 (默认 False，关闭终端打印，仅在 View 界面可见)"""
@@ -182,6 +187,18 @@ class GoalDirectionCommand(CommandTerm):
         # 立即更新一次方向指令
         self._update_command(env_ids)
 
+    def compute(self, dt, env_ids: torch.Tensor | None = None) -> None:
+        """推进命令；``resample_on_timer=False`` 时只在 reset 时重采样。
+
+        父类 ``compute`` 会在计时器到期时调用 ``_resample``，导致 episode
+        中途目标点变化。这里跳过 per-step 的计时与重采样，只更新方向。
+        """
+        if not self.cfg.resample_on_timer and env_ids is None:
+            self._update_metrics()
+            self._update_command(None)
+            return
+        super().compute(dt, env_ids)
+
     def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
         """每步计算指向目标点的机身航向系单位方向与航向偏差。"""
         ids = slice(None) if env_ids is None else env_ids
@@ -287,10 +304,18 @@ class GoalDirectionCommand(CommandTerm):
         terrain = getattr(self._env.scene, "terrain", None)
         if terrain is not None and getattr(terrain, "terrain_origins", None) is not None:
             num_levels = terrain.terrain_origins.shape[0]
-            options = [
-                f"Level {i} ({'Flat/0m' if i == 0 else f'0.{i*3:02d}m steps'})"
-                for i in range(num_levels)
-            ]
+            generator_cfg = getattr(getattr(terrain, "cfg", None), "terrain_generator", None)
+            sub_terrain_names = " ".join(
+                getattr(generator_cfg, "sub_terrains", {}).keys()
+            ).lower()
+            if "stair" in sub_terrain_names:
+                options = [
+                    f"Level {i} ({'Flat/0m' if i == 0 else f'0.{i*3:02d}m steps'})"
+                    for i in range(num_levels)
+                ]
+            else:
+                # 非楼梯地形不要显示台阶高度，避免误导。
+                options = [f"Level {i}" for i in range(num_levels)]
             options.append("Random (随机难度)")
 
             init_lvl = 0
@@ -306,7 +331,7 @@ class GoalDirectionCommand(CommandTerm):
                 env_idx = min(get_env_idx(), len(terrain.terrain_levels) - 1)
                 init_lvl = min(max(0, int(terrain.terrain_levels[env_idx].item())), num_levels - 1)
 
-            with server.gui.add_folder("Terrain Difficulty (楼梯难度)"):
+            with server.gui.add_folder("Terrain Difficulty (地形难度)"):
                 dropdown = server.gui.add_dropdown(
                     "Difficulty Level",
                     options=options,
@@ -455,19 +480,15 @@ class GoalDirectionCommand(CommandTerm):
 class HeightTargetCommandCfg(CommandTermCfg):
     """机身高度目标命令配置。
 
-    目标身体高度基于地面高度动态计算：
+    目标身体高度基于地形高度动态计算：
         height_cmd = ground_z + nominal_height
-    其中 ground_z 由足端 body 在世界坐标系下的 z 值估算：
-        - 平地模式（is_stair=False）：取四足 z 的最小值（最稳定的接地估计）
-        - 楼梯模式（is_stair=True）：取四足 z 的最大值（跟随最高台阶高度）
+    其中 ground_z 取四足 body 相对环境原点的 z 最大值，跟随当前踩上的最高地形。
     """
     entity_name: str = "robot"
     nominal_height: float = 0.28
     """狗站立时机身相对地面的高度（米）。"""
     foot_body_names: tuple[str, ...] = ("FR_foot", "FL_foot", "RR_foot", "RL_foot")
-    """四个足端 body 的名称，用于估算地面高度。"""
-    is_stair: bool = False
-    """是否为楼梯任务。平地取足端最小 z，楼梯取足端最大 z。"""
+    """四个足端 body 的名称，用于估算地形高度。"""
     height_smooth_alpha: float = 0.05
     """低通滤波系数 (0, 1]：越小越平滑，越大跟随越快。默认 0.05 较为平滑。"""
     resampling_time_range: tuple[float, float] = (10.0, 10.0)
@@ -538,12 +559,8 @@ class HeightTargetCommand(CommandTerm):
         origin_z = self._env.scene.env_origins[:, 2:3]  # (num_envs, 1)
         foot_z_rel = foot_pos_w[:, foot_ids, 2] - origin_z
 
-        # 楼梯：取最大相对 z（跟随已踏上的最高台阶，最低为凹底 0.0）
-        # 平地：取最小相对 z（最接近地面的足端）
-        if self.cfg.is_stair:
-            raw_ground_z = foot_z_rel.max(dim=-1).values.clamp(min=0.0)
-        else:
-            raw_ground_z = foot_z_rel.min(dim=-1).values
+        # 取最大相对 z：跟随当前踩上的最高地形（楼梯 / 轮胎 / 平台）。
+        raw_ground_z = foot_z_rel.max(dim=-1).values.clamp(min=0.0)
 
         # 低通滤波平滑地面相对高度估计
         alpha = self.cfg.height_smooth_alpha

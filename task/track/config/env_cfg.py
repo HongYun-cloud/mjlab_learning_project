@@ -711,8 +711,10 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
 
   # Platform 课程划分为 level 0~12 共 13 个难度点。
+  # 到 level 12 后不再继续加难，reset 时在 0~12 之间随机。
   if "terrain_levels" in cfg.curriculum:
     cfg.curriculum["terrain_levels"].params["max_level"] = 12
+    cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
 
   
   if play:

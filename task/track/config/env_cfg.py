@@ -598,6 +598,8 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.commands["Goal_direction"].cardinal_directions = (
     direction_to_cardinal[platform_sub.direction],
   )
+  cfg.rewards["torque_penalty"].weight = -1.0e-4
+  cfg.rewards["aggressive_motion"].weight = -4.0
 
   # 头部/躯干与地形的接触传感器：只用于终止，不进奖励。
   # Go2 模型的 trunk/head 碰撞几何都属于 base_link，因此这里按 body 匹配。

@@ -431,12 +431,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       # Base acceleration penalty: ||a_lin||^2 + 0.02 * ||a_ang||^2
       "base_accel_penalty": RewardTermCfg(
         func=base_accel_penalty,
-        weight=-0.001,
+        weight=-1.0e-3,
         params={"asset_cfg": SceneEntityCfg("robot")},
       ),
       "foot_accel_penalty": RewardTermCfg(
         func=FootAccelPenalty,
-        weight=-0.0005,
+        weight=-5e-4,
         params={
           "asset_cfg": SceneEntityCfg(
             "robot",
@@ -480,6 +480,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         weight=0.8,
         params={"min_heading_error": math.pi / 2},
       ),
+      # 终点附近生效
       "standstill": RewardTermCfg(
         func=standstill,
         weight=-1.0,
@@ -490,6 +491,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "t_r": 2.0,
         },
       ),
+      # 终点附近生效
       "stand_pose": RewardTermCfg(
         func=stand_pose,
         weight=-10.0,

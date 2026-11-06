@@ -14,6 +14,19 @@ from mjlab.terrains.terrain_generator import (
 )
 
 
+def _schedule_value_at_difficulty(
+    schedule: tuple[float, ...], difficulty: float
+) -> float:
+    """Map a difficulty in [0, 1] to the nearest entry in a schedule."""
+    values = tuple(schedule)
+    if len(values) == 1:
+        return float(values[0])
+    index = int(
+        round(float(np.clip(difficulty, 0.0, 1.0)) * (len(values) - 1))
+    )
+    return float(values[index])
+
+
 @dataclass(kw_only=True)
 class StepPlatformTerrainCfg(SubTerrainCfg):
     """两阶台阶 + 第一小平台 + 课程难度间隔 (Gap) + 第二小平台的地形配置。
@@ -72,6 +85,9 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
     gap_distance_range: tuple[float, float] = (0.20, 0.60)
     """平台间距的课程变化范围 (单位: 米，默认 20cm ~ 60cm，随 difficulty 从 0 到 1 逐渐拉宽)"""
 
+    gap_distance_schedule: tuple[float, ...] | None = None
+    """按难度索引的平台间距序列。设置后优先于 gap_distance 和 gap_distance_range。"""
+
     vary_gap_with_difficulty: bool = True
     """是否随课程难度调节间距大小"""
 
@@ -81,6 +97,9 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
 
     mid_platform_length: float = 0.2
     """中间小平台沿行进方向的长度 (米)。"""
+
+    mid_platform_length_schedule: tuple[float, ...] | None = None
+    """按难度索引的中间平台长度序列。设置后优先于 mid_platform_length。"""
 
     mid_platform_width: float = 1.0
     """中间小平台的横向宽度 (米)。"""
@@ -181,6 +200,12 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
             effective_gap = 0.0
             second_plat_len = 0.0
             num_mid = 0
+        elif self.gap_distance_schedule is not None:
+            effective_gap = _schedule_value_at_difficulty(
+                self.gap_distance_schedule, difficulty
+            )
+            second_plat_len = self.second_platform_length
+            num_mid = max(0, int(self.num_mid_platforms))
         elif self.gap_distance is not None:
             effective_gap = float(self.gap_distance)
             second_plat_len = self.second_platform_length
@@ -202,8 +227,16 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
         up_stairs_length = self.num_steps * self.step_width
         down_stairs_length = self.num_steps * self.step_width if self.add_down_stairs else 0.0
 
+        # 中间小平台沿行进方向的长度：支持按难度动态变化。
+        if self.mid_platform_length_schedule is not None:
+            mid_platform_length = _schedule_value_at_difficulty(
+                self.mid_platform_length_schedule, difficulty
+            )
+        else:
+            mid_platform_length = float(self.mid_platform_length)
+
         # 中间小平台总长度；num_mid=0 时退化为原来的单个大沟壑。
-        mid_platforms_length = num_mid * self.mid_platform_length
+        mid_platforms_length = num_mid * mid_platform_length
         total_gap = (
             (num_mid + 1) * effective_gap + mid_platforms_length
             if self.has_second_platform
@@ -261,13 +294,13 @@ class StepPlatformTerrainCfg(SubTerrainCfg):
                     up_stairs_length
                     + self.platform_length
                     + (i + 1) * effective_gap
-                    + i * self.mid_platform_length
+                    + i * mid_platform_length
                 )
                 parts.append(
                     (
                         f"mid_platform_{i + 1}",
                         mid_travel_start,
-                        self.mid_platform_length,
+                        mid_platform_length,
                         self.mid_platform_width,
                         self.mid_platform_height,
                         self.mid_platform_color,
@@ -468,7 +501,7 @@ def step_platform_terrain(**overrides: Any) -> StepPlatformTerrainCfg:
 STEP_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
     border_width=20.0,
-    num_rows=5,
+    num_rows=13,
     num_cols=1,
     curriculum=True,
     sub_terrains={
@@ -479,13 +512,45 @@ STEP_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
             step_length=10.0,
             platform_width=10.0,
             second_platform_width=10.0,
-            # 中间加入 5 个 10m(横向) × 0.2m(行进方向) 的落脚平台。
-            # 相邻平台间隙随地形难度在 0.01~0.50m 变化（低难度几乎连成平台，高难度需跳）。
+            # 中间加入 5 个 10m(横向) 的落脚平台。
+            # 难度 0~12，共 12 次升级：
+            #   先增加沟壑间距 8 次，再降低中间平台长度 4 次。
+            #   采用“沟壑升级两次 -> 平台缩短一次”的交错方式。
             num_mid_platforms=5,
-            mid_platform_length=0.2,
+            mid_platform_length=0.5,
+            mid_platform_length_schedule=(
+                0.500,
+                0.500,
+                0.500,
+                0.415,
+                0.415,
+                0.415,
+                0.330,
+                0.330,
+                0.330,
+                0.245,
+                0.245,
+                0.245,
+                0.160,
+            ),
             mid_platform_width=10.0,
             mid_platform_height=0.36,
-            gap_distance_range=(0.01, 0.50),
+            gap_distance_range=(0.01, 0.35),
+            gap_distance_schedule=(
+                0.0100,
+                0.0525,
+                0.0950,
+                0.0950,
+                0.1375,
+                0.1800,
+                0.1800,
+                0.2225,
+                0.2650,
+                0.2650,
+                0.3075,
+                0.3500,
+                0.3500,
+            ),
             vary_gap_with_difficulty=True,
             # 起点放在台阶前方的基准地面上（平台下方），先爬上第一平台，
             # 再跨越中间的沟壑落到第二平台。

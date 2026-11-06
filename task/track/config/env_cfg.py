@@ -503,6 +503,19 @@ def my_go2_tire_env_cfg(
 
   return cfg
 
+def _schedule_tensor(
+  schedule: tuple[float, ...], difficulty: torch.Tensor
+) -> torch.Tensor:
+  """Map per-env difficulty in [0, 1] to schedule entries."""
+  values = torch.tensor(schedule, device=difficulty.device, dtype=difficulty.dtype)
+  if values.numel() == 1:
+    return values[0].expand_as(difficulty)
+  index = torch.round(
+    difficulty.clamp(0.0, 1.0) * (values.numel() - 1)
+  ).long()
+  return values[index]
+
+
 def update_platform_goal_distance(
   env,
   env_ids,
@@ -539,7 +552,9 @@ def update_platform_goal_distance(
   num_rows = terrain.terrain_origins.shape[0]
   difficulty = terrain.terrain_levels[env_ids].float() / max(num_rows - 1, 1)
 
-  if sub.gap_distance is not None:
+  if getattr(sub, "gap_distance_schedule", None) is not None:
+    spacing = _schedule_tensor(sub.gap_distance_schedule, difficulty)
+  elif sub.gap_distance is not None:
     spacing = torch.full_like(difficulty, float(sub.gap_distance))
   elif sub.vary_gap_with_difficulty:
     gap_min, gap_max = sub.gap_distance_range
@@ -547,9 +562,18 @@ def update_platform_goal_distance(
   else:
     spacing = torch.full_like(difficulty, float(sub.gap_distance_range[0]))
 
+  if getattr(sub, "mid_platform_length_schedule", None) is not None:
+    mid_platform_length = _schedule_tensor(
+      sub.mid_platform_length_schedule, difficulty
+    )
+  else:
+    mid_platform_length = torch.full_like(
+      difficulty, float(sub.mid_platform_length)
+    )
+
   total_gap = (
     (sub.num_mid_platforms + 1) * spacing
-    + sub.num_mid_platforms * sub.mid_platform_length
+    + sub.num_mid_platforms * mid_platform_length
   )
   up_stairs_length = sub.num_steps * sub.step_width
   if sub.spawn_on_platform:
@@ -685,6 +709,10 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["track_target_bias"].params["t_r"] = 10.0
   cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
+
+  # Platform 课程划分为 level 0~12 共 13 个难度点。
+  if "terrain_levels" in cfg.curriculum:
+    cfg.curriculum["terrain_levels"].params["max_level"] = 12
 
   
   if play:

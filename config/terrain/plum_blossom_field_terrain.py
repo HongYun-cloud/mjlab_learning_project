@@ -35,6 +35,16 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
       桩间距按难度随机排列，最大不超过 0.3m。
     """
 
+    # --- 地形范围 ---
+    field_size: tuple[float, float] = (15.0, 15.0)
+    """梅花桩区域尺寸（米）。"""
+
+    flat_border_width: float = 2.0
+    """梅花桩区域外侧的平地宽度（米）。总 patch 尺寸会增加 2 倍该值。"""
+
+    flat_color: tuple[float, float, float, float] = (0.45, 0.55, 0.40, 1.0)
+    """外侧平地颜色。"""
+
     # --- 中心平台 ---
     platform_size_schedule: tuple[float, ...] = (
         7.00,
@@ -143,12 +153,14 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
     def _large_pillar_positions(self) -> list[tuple[float, float]]:
         """难度 0 的 8 根大桩中心，相对 patch 中心。
 
-        4m 宽的环形区域里放：
-        - 上方 3 根、下方 3 根
-        - 左右各 1 根
+        针对 15m 梅花桩区域、7m 中心平台、4m 大桩：
+        4m 宽的环形区域里放上方 3 根、下方 3 根、左右各 1 根。
         """
-        ring_center = (15.0 - 7.0) / 2.0 + 4.0 / 2.0
-        # ring_center = 5.5m
+        field_half = self.field_size[0] / 2.0
+        platform_size = float(self.platform_size_schedule[0])
+        ring_center = platform_size / 2.0 + (
+            field_half - platform_size / 2.0
+        ) / 2.0
         return [
             (-5.0, ring_center),
             (0.0, ring_center),
@@ -172,17 +184,19 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
         platform_size = float(self.platform_size_schedule[level])
         pillar_size = float(self.pillar_size_schedule[level])
 
-        half_x = self.size[0] / 2.0
-        half_y = self.size[1] / 2.0
-        cx = half_x + self.center_offset[0]
-        cy = half_y + self.center_offset[1]
+        patch_half_x = self.size[0] / 2.0
+        patch_half_y = self.size[1] / 2.0
+        field_half_x = self.field_size[0] / 2.0
+        field_half_y = self.field_size[1] / 2.0
+        cx = patch_half_x + self.center_offset[0]
+        cy = patch_half_y + self.center_offset[1]
 
         # 0. 基准地面
         self._add_box(
             geometries,
             body,
             name="floor",
-            size=(half_x, half_y, self.floor_thickness / 2.0),
+            size=(patch_half_x, patch_half_y, self.floor_thickness / 2.0),
             pos=(cx, cy, -self.floor_thickness / 2.0),
             color=self.floor_color,
         )
@@ -201,6 +215,47 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
             pos=(cx, cy, self.platform_height / 2.0),
             color=self.platform_color,
         )
+
+        # 1.1 梅花桩区域外侧的环形平地
+        border_x = patch_half_x - field_half_x
+        border_y = patch_half_y - field_half_y
+        if border_x > 0.0 and border_y > 0.0:
+            # 上下两条
+            for sign in (1.0, -1.0):
+                self._add_box(
+                    geometries,
+                    body,
+                    name="outer_flat_top" if sign > 0 else "outer_flat_bottom",
+                    size=(
+                        patch_half_x,
+                        border_y / 2.0,
+                        self.platform_height / 2.0,
+                    ),
+                    pos=(
+                        cx,
+                        cy + sign * (field_half_y + border_y / 2.0),
+                        self.platform_height / 2.0,
+                    ),
+                    color=self.flat_color,
+                )
+            # 左右两条（上下两条已经覆盖四个角）
+            for sign in (1.0, -1.0):
+                self._add_box(
+                    geometries,
+                    body,
+                    name="outer_flat_right" if sign > 0 else "outer_flat_left",
+                    size=(
+                        border_x / 2.0,
+                        field_half_y,
+                        self.platform_height / 2.0,
+                    ),
+                    pos=(
+                        cx + sign * (field_half_x + border_x / 2.0),
+                        cy,
+                        self.platform_height / 2.0,
+                    ),
+                    color=self.flat_color,
+                )
 
         # 2. 梅花桩
         if level == 0:
@@ -241,10 +296,10 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
             row_pitch = pitch * np.sqrt(3.0) / 2.0
 
             half_pillar = pillar_size / 2.0
-            start_x = -half_x + half_pillar
-            end_x = half_x - half_pillar
-            start_y = -half_y + half_pillar
-            end_y = half_y - half_pillar
+            start_x = -field_half_x + half_pillar
+            end_x = field_half_x - half_pillar
+            start_y = -field_half_y + half_pillar
+            end_y = field_half_y - half_pillar
 
             nx = int(np.floor((end_x - start_x) / pitch)) + 1
             ny = int(np.floor((end_y - start_y) / row_pitch)) + 1
@@ -257,12 +312,18 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
                 row_offset = (pitch / 2.0) if (iy % 2 == 1) else 0.0
                 for ix in range(nx):
                     x = start_x + ix * pitch + row_offset
-                    if x < -half_x + half_pillar or x > half_x - half_pillar:
+                    if (
+                        x < -field_half_x + half_pillar
+                        or x > field_half_x - half_pillar
+                    ):
                         continue
 
                     xj = x + float(rng.uniform(-jitter, jitter))
                     yj = y + float(rng.uniform(-jitter, jitter))
-                    if abs(xj) > half_x - half_pillar or abs(yj) > half_y - half_pillar:
+                    if (
+                        abs(xj) > field_half_x - half_pillar
+                        or abs(yj) > field_half_y - half_pillar
+                    ):
                         continue
 
                     # 跳过中心平台及其净空区域
@@ -315,13 +376,18 @@ def plum_blossom_field_terrain(
 
 # 16 个难度：0~15
 PLUM_BLOSSOM_FIELD_TERRAINS_CFG = TerrainGeneratorCfg(
-    size=(15.0, 15.0),
+    # 15m 梅花桩区域 + 四周各 2m 平地
+    size=(19.0, 19.0),
     border_width=20.0,
     num_rows=16,
     num_cols=1,
     curriculum=True,
     sub_terrains={
-        "plum_blossom_field": plum_blossom_field_terrain(proportion=1.0),
+        "plum_blossom_field": plum_blossom_field_terrain(
+            proportion=1.0,
+            field_size=(15.0, 15.0),
+            flat_border_width=2.0,
+        ),
     },
     add_lights=True,
 )

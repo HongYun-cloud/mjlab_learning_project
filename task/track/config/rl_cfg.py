@@ -44,7 +44,7 @@ def my_go2_ppo_runner_cfg(
     if use_rnd:
         rnd_cfg = dict(
             # rsl_rl 会再乘以 env.step_dt (0.02s)：实际每步系数 = weight * 0.02。
-            # 5.0 约等于每步 0.1 的内在奖励，可按任务效果在 1~20 间调整。
+            # 5.0 约等于每步 0.1 的内在奖励。
             weight=5.0,
             learning_rate=1.0e-3,
             num_outputs=64,

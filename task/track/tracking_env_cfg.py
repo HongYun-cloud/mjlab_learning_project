@@ -44,18 +44,34 @@ from myrobot_mjlab.config.observation.Trackingobservation import (
   direction_to_goal,
   friction_coefficient,
   heading_to_goal_error,
+  target_distance,
   terrain_type,
+  time_left,
 )
 from myrobot_mjlab.config.reward.Trackingreward import (
   airborne_feet_penalty,
+  aggressive_motion_penalty,
+  base_accel_penalty,
   base_angular_velocity_penalty,
   base_vertical_velocity_penalty,
   body_lateral_velocity_penalty,
+  collision_penalty,
   diagonal_trot_reward,
+  end_pose,
+  end_position,
   face_target,
   feet_slip_penalty,
+  foot_contact_pattern_penalty,
+  FootAccelPenalty,
+  joint_power_penalty,
+  joint_vel_limit,
+  move_in_direction,
+  MoveInDirectionFirstN,
   reach_target,
+  stand_pose,
+  standstill,
   stall_penalty,
+  speed_limit_penalty,
   track_base_height,
   track_target_bias,
   track_target_position,
@@ -93,6 +109,14 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         "head_error": ObservationTermCfg(
           func=heading_to_goal_error,
           params={"command_name": "Goal_direction"},
+        ),
+        "target_distance": ObservationTermCfg(
+          func=target_distance,
+          params={"command_name": "Goal_direction"},
+        ),
+        "time_left": ObservationTermCfg(
+          func=time_left,
+          params={"normalize": True},
         ),
         # 地形选项 one-hot: [平地, 楼梯, 轮胎阵, 沟壑/平台, 单木桥]
         # 传 None 时根据场景地形自动推断；各任务可在 env_cfg 中显式覆盖。
@@ -223,6 +247,8 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         params={
           "command_name": "Goal_direction",
           "distance_threshold": 0.15,
+          "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+          "height_command_name": "Base_height_target",
         },
       ),
     }
@@ -296,52 +322,193 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     rewards = {
       "track_target_position": RewardTermCfg(
         func=track_target_position,
-        weight=10.0,
-        params={"command_name": "Goal_direction", "dense": False},
+        # (1 / t_r) * 10，t_r = 2.0s -> 5.0
+        weight=5.0,
+        params={
+          "command_name": "Goal_direction",
+          "t_r": 2.0,
+          "dense": False,
+          "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+          "height_command_name": "Base_height_target",
+        },
       ),
       "track_target_bias": RewardTermCfg(
         func=track_target_bias,
-        weight=1.5,
-        params={"command_name": "Goal_direction"},
+        weight=5.0,
+        params={
+          "command_name": "Goal_direction",
+          "distance_threshold": 2.0,
+          "t_r": 4.0,
+          "goal_deadzone": 0.15,
+        },
       ),
-      # 机身高度奖励：仅跟踪 Base_height_target 高度指令。
-      "track_base_height": RewardTermCfg(
-        func=track_base_height,
-        weight=1.5,
-        params={"std": 0.04},
+      # 提前终止惩罚：非 timeout 的 termination 生效，权重 -200。
+      "termination_penalty": RewardTermCfg(
+        func=envs_mdp.is_terminated,
+        weight=-200.0,
       ),
+
+      # 碰撞惩罚：非足端 contact sensor 命中即返回 1，权重 -1。
+      "collision_penalty": RewardTermCfg(
+        func=collision_penalty,
+        weight=-1.0,
+      ),
+      # 禁止 0 脚或 4 脚同时触地：允许 1~3 脚触地。
+      "foot_contact_pattern_penalty": RewardTermCfg(
+        func=foot_contact_pattern_penalty,
+        weight=-1.0,
+        params={
+          "sensor_name": "feet_ground_contact",
+          "min_contacts": 1,
+          "max_contacts": 4,
+        },
+      ),
+      # 终点姿态：|pitch| + |roll|
+      "end_pose": RewardTermCfg(
+        func=end_pose,
+        weight=-1.0,
+        params={
+          "command_name": "Goal_direction",
+          "distance_threshold": 0.25,
+        },
+      ),
+      # 终点 0.2m 内：四足中心 XY error 越小，exp(-error/0.05) 越大。
+      "end_position": RewardTermCfg(
+        func=end_position,
+        weight=0.5,
+        params={
+          "command_name": "Goal_direction",
+          "distance_threshold": 0.2,
+          "scale": 0.05,
+          "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+        },
+      ),
+      # 进入成功半径的全局正奖励（四足中心 XY + base 高度判定）。
+      "goal_arrival_bonus": RewardTermCfg(
+        func=reach_target,
+        weight=5.0,
+        params={
+          "command_name": "Goal_direction",
+          "distance_threshold": 0.15,
+          "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+          "height_command_name": "Base_height_target",
+        },
+      ),
+      # Joint Velocity Penalty: ||dot{q}||^2
+      "joint_vel": RewardTermCfg(
+        func=envs_mdp.joint_vel_l2,
+        weight=-0.001,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=(".*",))},
+      ),
+      # Joint velocity soft limit: sum_i max(|dot{q}_i| - 0.9*limit_i, 0)
+      "joint_vel_limit": RewardTermCfg(
+        func=joint_vel_limit,
+        weight=-1.0,
+        params={
+          "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+          "vel_limit": 10.0,
+        },
+      ),
+
+      # Normalized squared joint power:
+      # sum_i ((qdot_i / 30) * (tau_i / 25))^2
+      "joint_power": RewardTermCfg(
+        func=joint_power_penalty,
+        weight=-0.025,
+        params={
+          "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+          "vel_norm": 30.0,
+          "torque_norm": 25.0,
+        },
+      ),
+
+      # Torque penalty: ||tau||^2
+      "torque_penalty": RewardTermCfg(
+        func=envs_mdp.joint_torques_l2,
+        weight=-1.0e-3,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+      ),
+      # Base acceleration penalty: ||a_lin||^2 + 0.02 * ||a_ang||^2
+      "base_accel_penalty": RewardTermCfg(
+        func=base_accel_penalty,
+        weight=-0.001,
+        params={"asset_cfg": SceneEntityCfg("robot")},
+      ),
+      "foot_accel_penalty": RewardTermCfg(
+        func=FootAccelPenalty,
+        weight=-0.0005,
+        params={
+          "asset_cfg": SceneEntityCfg(
+            "robot",
+            body_names=("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+          )
+        },
+      ),
+      "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.05),
+
+
       "stall_penalty": RewardTermCfg(
         func=stall_penalty,
-        weight=2.0,
-        params={"penalty_value": -5.0},
+        weight=-1.0,
+        params={
+          "penalty_value": 1.0,
+          "vel_threshold": 0.2,
+          "dist_threshold": 0.15,
+          "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+        },
       ),
+      # Speed soft limit: zero below 0.5 m/s; exp((v-0.5)/e)-1 above.
+      "speed_limit_penalty": RewardTermCfg(
+        func=speed_limit_penalty,
+        weight=-0.1,
+        params={"max_speed": 1.0},
+      ),
+      # 论文 Aggressive Motion: (|v_H| - 1)^2 * 1(|v_H| > 1)
+      "aggressive_motion": RewardTermCfg(
+        func=aggressive_motion_penalty,
+        weight=-5.0,
+        params={"max_speed": 1.0},
+      ),
+      "moveindirection": RewardTermCfg(
+        func=move_in_direction,
+        weight=1.0,
+        params={"command_name": "Goal_direction"},
+      ),
+      # 航向误差 > 90° 时才惩罚，其余情况返回 0。
       "face_target": RewardTermCfg(
         func=face_target,
         weight=0.8,
+        params={"min_heading_error": math.pi / 2},
       ),
-      "lateral_vel": RewardTermCfg(
-        func=body_lateral_velocity_penalty,
-        weight=-0.1,
+      "standstill": RewardTermCfg(
+        func=standstill,
+        weight=-1.0,
+        params={
+          "command_name": "Goal_direction",
+          "distance_threshold": 0.25,
+          "heading_threshold": 0.5,
+          "t_r": 2.0,
+        },
       ),
-      "body_ang_vel": RewardTermCfg(
-        func=base_angular_velocity_penalty,
-        weight=-0.15,
-      ),
-      "base_vertical_vel": RewardTermCfg(
-        func=base_vertical_velocity_penalty,
-        weight=-0.5,
-      ),
-      "upright": RewardTermCfg(
-        func=mdp.upright,
-        weight=1.0,
-        params={                
-          "std": math.sqrt(0.2),
-          "asset_cfg": SceneEntityCfg("robot", body_names=()),  # Set per-robot.
+      "stand_pose": RewardTermCfg(
+        func=stand_pose,
+        weight=-10.0,
+        params={
+          "command_name": "Goal_direction",
+          "distance_threshold": 0.25,
+          "contact_distance_threshold": 0.15,
+          "contact_vel_threshold": 0.05,
+          "t_r": 2.0,
+          "height_command_name": "Base_height_target",
+          "sensor_name": "feet_ground_contact",
+          "min_contacts": 4,
+          "contact_penalty": 1.0,
+          "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
         },
       ),
       "pose": RewardTermCfg(
         func=envs_mdp.posture,
-        weight=1.0,
+        weight=0.5,
         params={
           "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
           "std": {
@@ -355,40 +522,11 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         weight=0.0,  # Override per-robot
         params={"sensor_name": "robot/root_angmom"},
       ),
-      "dof_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-1.0),
-      "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.05),
-      "air_time": RewardTermCfg(
-        func=mdp.feet_air_time,
-        weight=0.25,
-        params={
-          "sensor_name": "feet_ground_contact",
-          "threshold_min": 0.05,
-          "threshold_max": 0.5,
-          "command_name": None,
-        },
-      ),
 
-      "soft_landing": RewardTermCfg(
-        func=mdp.soft_landing,
-        weight=-1e-5,
-        params={
-          "sensor_name": "feet_ground_contact",
-          "command_name": None,
-        },
-      ),
-      "foot_slip": RewardTermCfg(
-        func=feet_slip_penalty,
-        weight=-0.1,
-        params={
-          "sensor_name": "feet_ground_contact",
-        },
-      ),
 
-      "joint_acc": RewardTermCfg(
-        func=envs_mdp.joint_acc_l2,
-        weight=-2.5e-7,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=(".*",))},
-      ),
+
+      # Foot acceleration penalty: sum_4 ||a_foot||
+
     }
 
     ##
@@ -400,10 +538,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       "fell_over": TerminationTermCfg(
         func=mdp.bad_orientation,
         params={"limit_angle": math.radians(70.0)},
-      ),
-      "out_of_terrain_bounds": TerminationTermCfg(
-        func=mdp.out_of_terrain_bounds,
-        time_out=True,
       ),
       "reached_edge": TerminationTermCfg(
         func=velocity_terminations.terrain_edge_reached,
@@ -423,6 +557,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "command_name": "Goal_direction",
           "distance_threshold": 0.15,
           "required_reach_count": 3,
+          "max_level": 6,
         },
       ),
     }
@@ -465,5 +600,5 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         ),
       ),
       decimation=4,
-      episode_length_s=15.0,
+      episode_length_s=6.0,
   )

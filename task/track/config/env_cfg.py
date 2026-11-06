@@ -153,10 +153,12 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg.viewer.elevation = -10.0
 
   # 高度奖励保留在配置中：track_base_height 跟踪 Base_height_target 指令。
-  cfg.rewards["upright"].params["asset_cfg"].body_names = ("base_link",)
+  if "upright" in cfg.rewards:
+    cfg.rewards["upright"].params["asset_cfg"].body_names = ("base_link",)
 
   cfg.rewards["angular_momentum"].weight = 0.0
-  cfg.rewards["air_time"].weight = 0.0
+  if "air_time" in cfg.rewards:
+    cfg.rewards["air_time"].weight = 0.0
 
   # Per-body-group collision penalties.
   cfg.rewards["self_collisions"] = RewardTermCfg(
@@ -176,7 +178,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   # )
 
   # On rough terrain the quadruped tilts significantly; don't terminate on
-  # orientation alone. Let out_of_terrain_bounds handle resets.
+  # orientation alone.
   cfg.terminations.pop("fell_over", None)
 
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
@@ -191,7 +193,6 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
     cfg.scene.num_envs = 1
     cfg.observations["actor"].enable_corruption = False
 
-    cfg.terminations.pop("out_of_terrain_bounds", None)
     cfg.curriculum = {}
 
 
@@ -209,7 +210,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
 
 def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Create Unitree Go2 flat terrain tracking configuration."""
-  cfg = my_go2_stair_env_cfg(play=play)
+  cfg = my_go2_rough_env_cfg(play=play)
   cfg.sim.njmax = 300
   cfg.sim.mujoco.ccd_iterations = 50
   cfg.sim.contact_sensor_maxmatch = 64
@@ -221,7 +222,8 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.scene.terrain.terrain_generator = None
 
   # 2. Actor 和 Critic 都使用 height_scan，保留 terrain_scan 传感器。
-  cfg.rewards["upright"].params.pop("terrain_sensor_names", None)
+  if "upright" in cfg.rewards:
+    cfg.rewards["upright"].params.pop("terrain_sensor_names", None)
 
   # 3. 碰撞惩罚：平地保留 shank_collision 避免小腿触地拖拽
   for key in ("self_collisions", "trunk_head_collision"):
@@ -232,8 +234,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     params={"sensor_name": "shank_ground_touch"},
   )
 
-  # 4. 终止条件：平地加入 fall_over，大腿触地 illegal_contact，以及最低高度 base_too_low（低于 0.20m 即重置）
-  cfg.terminations.pop("out_of_terrain_bounds", None)
+  # 4. 终止条件：平地加入 fell_over、大腿触地 illegal_contact。
   cfg.terminations["fell_over"] = TerminationTermCfg(
     func=mdp.bad_orientation,
     params={"limit_angle": math.radians(70.0)},
@@ -250,10 +251,6 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   #   func=mdp.illegal_contact,
   #   params={"sensor_name": "shank_ground_touch", "force_threshold": 10.0},
   # )
-  cfg.terminations["base_too_low"] = TerminationTermCfg(
-    func=mdp.root_height_below_minimum,
-    params={"minimum_height": 0.20},
-  )
 
   cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
     func=out_of_patch_bounds,
@@ -264,17 +261,14 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # 5. 平地步态与速度约束（目标速度设为 0.8 m/s，提升脚掌离地与站姿高度稳定性）
 
   cfg.rewards["track_target_bias"].params["speed_std"] = 0.25
-  cfg.rewards["air_time"].weight = 0.05
-  cfg.rewards["pose"].weight = 1.0
-  cfg.rewards["pose"].params["std"] = {
-    r".*(FR|FL|RR|RL)_(hip|thigh)_joint.*": 0.45,
-    r".*(FR|FL|RR|RL)_calf_joint.*": 0.75,
-  }
-
-  # Flat 继承 stair cfg，但原地不动惩罚保持基础值。
-  cfg.rewards["stall_penalty"].weight = 2.0
-  cfg.rewards["stall_penalty"].params["vel_threshold"] = 0.1
-
+  if "air_time" in cfg.rewards:
+    cfg.rewards["air_time"].weight = 0.05
+  if "pose" in cfg.rewards:
+    cfg.rewards["pose"].weight = 1.0
+    cfg.rewards["pose"].params["std"] = {
+      r".*(FR|FL|RR|RL)_(hip|thigh)_joint.*": 0.45,
+      r".*(FR|FL|RR|RL)_calf_joint.*": 0.75,
+    }
 
   # 5. 平地课程：到达多次目标点后升级（提升目标距离）
   cfg.curriculum["terrain_levels"] = CurriculumTermCfg(
@@ -302,7 +296,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   cmd_height = cfg.commands["Base_height_target"]
   assert isinstance(cmd_height, HeightTargetCommandCfg)
-  cmd_height.nominal_height = 0.26
+  cmd_height.nominal_height = 0.25
   cmd_height.height_smooth_alpha = 0.05
 
   cmd_head = cfg.commands["Heading_error"]
@@ -324,10 +318,20 @@ def my_go2_stair_env_cfg(
             max_init_terrain_level=0,
         )
 
-  for key in ("self_collisions", "trunk_head_collision"):
-    cfg.rewards.pop(key, None)
+  # 头部/躯干与地形的接触传感器：只用于终止，不进奖励。
+  trunk_head_ground_cfg = ContactSensorCfg(
+    name="trunk_head_ground_touch",
+    primary=ContactMatch(mode="body", pattern="base_link", entity="robot"),
+    secondary=ContactMatch(mode="body", pattern="terrain"),
+    fields=("found", "force"),
+    reduce="none",
+    num_slots=1,
+    history_length=4,
+  )
+  cfg.scene.sensors = tuple(cfg.scene.sensors or ()) + (trunk_head_ground_cfg,)
 
-  cfg.rewards["upright"].params.pop("terrain_sensor_names", None)
+  for key in ("self_collisions", "trunk_head_collision","air_time"):
+    cfg.rewards.pop(key, None)
   
   # 1. 碰撞与步态约束（同步平地有效参数）
   cfg.rewards["shank_collision"] = RewardTermCfg(
@@ -335,33 +339,18 @@ def my_go2_stair_env_cfg(
     weight=-0.1,
     params={"sensor_name": "shank_ground_touch"},
   )
-  cfg.rewards["track_target_bias"].params["speed_std"] = 0.25
-  cfg.rewards["air_time"].weight = 0.10
-  cfg.rewards["pose"].weight = 0.5
-  cfg.rewards["pose"].params["std"] = {
-    r".*(FR|FL|RR|RL)_(hip|thigh)_joint.*": 0.75,
-    r".*(FR|FL|RR|RL)_calf_joint.*": 0.75,
-  }
 
-  # 楼梯任务：加大原地不动的惩罚，避免策略在坡底/台阶前站住。
-  # 基础配置是 weight=2.0, penalty_value=-5.0；这里加倍到约 -20/step。
-  cfg.rewards["stall_penalty"].weight = 4.0
-  cfg.rewards["stall_penalty"].params["penalty_value"] = -5.0
-  cfg.rewards["stall_penalty"].params["vel_threshold"] = 0.2
 
   # 2. 终止条件：大腿触地 illegal_contact，以及摔倒翻车限制 fell_over (70度)
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
   )
-  # cfg.terminations["fell_over"] = TerminationTermCfg(
-  #   func=mdp.bad_orientation,
-  #   params={"limit_angle": math.radians(70.0)},
-  # )
+  cfg.terminations["trunk_head_collision"] = TerminationTermCfg(
+    func=mdp.illegal_contact,
+    params={"sensor_name": "trunk_head_ground_touch"},
+  )
 
-  # 楼梯地形 border_width=20m，内置 out_of_terrain_bounds 边界太大不会触发；
-  # 用 out_of_patch_bounds 代替：机器人离开自己的 8×8 patch 即终止（time_out）
-  cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.terminations.pop("reached_edge", None)
   cfg.terminations.pop("fell_over",None)
   cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
@@ -401,6 +390,17 @@ def my_go2_stair_env_cfg(
   assert isinstance(cmd_goal, GoalDirectionCommandCfg)
   cmd_goal.target_distance = 3.8
 
+  # Stair 不使用 track_target_bias 的终点死区。
+  cfg.rewards["track_target_bias"].params["goal_deadzone"] = 0.0
+
+  # Stair 使用 15s episode；奖励时间窗按 15/6 = 2.5 倍等比例拉长。
+  cfg.episode_length_s = 15.0
+  cfg.rewards["track_target_position"].weight = 2.0  # (1 / t_r) * 10, t_r = 5
+  cfg.rewards["track_target_position"].params["t_r"] = 5.0
+  cfg.rewards["track_target_bias"].params["t_r"] = 10.0
+  cfg.rewards["standstill"].params["t_r"] = 5.0
+  cfg.rewards["stand_pose"].params["t_r"] = 5.0
+
   if play:
     cfg.scene.num_envs = 1
     cfg.scene.terrain.max_init_terrain_level = 5
@@ -422,7 +422,6 @@ def my_go2_tire_env_cfg(
   cfg.terminations.pop("fell_over", None)
 
   # 8×8 patch 边界检测
-  cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.terminations.pop("reached_edge", None)
   cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
     func=out_of_patch_bounds,
@@ -587,11 +586,35 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             terrain_generator=replace(STEP_PLATFORM_TERRAINS_CFG),
             max_init_terrain_level=0,
         )
+
+  # Platform 的目标点在第二平台中心，方向必须沿地形行进方向固定，
+  # 不能像 Stair 一样在四个基本方位里随机采样。
+  platform_sub = next(
+    sub
+    for sub in cfg.scene.terrain.terrain_generator.sub_terrains.values()
+    if hasattr(sub, "num_mid_platforms")
+  )
+  direction_to_cardinal = {"+x": "E", "-x": "W", "+y": "N", "-y": "S"}
+  cfg.commands["Goal_direction"].cardinal_directions = (
+    direction_to_cardinal[platform_sub.direction],
+  )
+
+  # 头部/躯干与地形的接触传感器：只用于终止，不进奖励。
+  # Go2 模型的 trunk/head 碰撞几何都属于 base_link，因此这里按 body 匹配。
+  trunk_head_ground_cfg = ContactSensorCfg(
+    name="trunk_head_ground_touch",
+    primary=ContactMatch(mode="body", pattern="base_link", entity="robot"),
+    secondary=ContactMatch(mode="body", pattern="terrain"),
+    fields=("found", "force"),
+    reduce="none",
+    num_slots=1,
+    history_length=4,
+  )
+  cfg.scene.sensors = tuple(cfg.scene.sensors or ()) + (trunk_head_ground_cfg,)
   
-  for key in ("self_collisions", "trunk_head_collision"):
+  for key in ("self_collisions", "trunk_head_collision", "air_time"):
     cfg.rewards.pop(key, None)
   
-  cfg.rewards["upright"].params.pop("terrain_sensor_names", None)
 
   # 1. 碰撞与步态约束（同步平地有效参数）
   cfg.rewards["shank_collision"] = RewardTermCfg(
@@ -599,36 +622,27 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     weight=-0.1,
     params={"sensor_name": "shank_ground_touch"},
   )
-  cfg.rewards["track_target_bias"].params["speed_std"] = 0.25
-  cfg.rewards["air_time"].weight = 0.2
-  cfg.rewards["air_time"].params["threshold_max"] = 1.0
-  cfg.rewards["pose"].weight = 0.3
-  cfg.rewards["pose"].params["std"] = {
-    r".*(FR|FL|RR|RL)_(hip|thigh)_joint.*": 0.45,
-    r".*(FR|FL|RR|RL)_calf_joint.*": 0.75,
-  }
   
-  # 2. 终止条件：大腿触地 illegal_contact；姿态倾斜超过 45° 直接结束。
-  #    平台跳跃任务中，落地/腾空时姿态明显倾斜则视为失败，避免带病继续。
+  # 2. 终止条件：与 Stair 对齐，只保留大腿触地和躯干/头部碰撞。
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
   )
-  cfg.terminations["fell_over"] = TerminationTermCfg(
-    func=mdp.bad_orientation,
-    params={"limit_angle": math.radians(45.0)},
+  cfg.terminations["trunk_head_collision"] = TerminationTermCfg(
+    func=mdp.illegal_contact,
+    params={"sensor_name": "trunk_head_ground_touch"},
   )
   
-  # 楼梯地形 border_width=20m，内置 out_of_terrain_bounds 边界太大不会触发；
-  # 用 out_of_patch_bounds 代替：机器人离开自己的 8×8 patch 即终止（time_out）
-  cfg.terminations.pop("out_of_terrain_bounds", None)
+  # 边界检测使用 out_of_patch_bounds：
+  # 机器人离开自己的 8×8 patch 即终止（time_out）。
+  # Platform 的目标最远约 7.34m，因此 X 方向保留 8.0m 边界；
+  # 其余参数与 Stair 对齐。
   cfg.terminations.pop("reached_edge", None)
+  cfg.terminations.pop("fell_over", None)
   cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
     func=out_of_patch_bounds,
     time_out=True,
-    # 出生点在 patch 中心前方，行进方向需要更大的 X 边界；
-    # Y 仍限制在 patch 的 ±4m 内。
-    params={"half_size_x": 8.0, "half_size_y": 4.0, "margin": 0.1},
+    params={"half_size_x": 8.0, "half_size_y": 4.0, "margin": 0.2},
   )
   cfg.events = {
       "reset_base": EventTermCfg(
@@ -636,10 +650,10 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         mode="reset",
         params={
           "pose_range": {
-            "x": (-0.1, 0.1),
-            "y": (-0.2, 0.2),
+            "x": (-0.5, 0.5),
+            "y": (-0.5, 0.5),
             "z": (0.0, 0.0),
-            "yaw": (-0.1, 0.1),          # 面朝台阶方向 (+X)
+            "yaw": (-3.14, 3.14),        # 与 Stair 一致：随机朝向
           },
             "velocity_range": {},
             "nominal_height": 0.28,
@@ -660,35 +674,20 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         },
       ),
     }
-  
+
+  # 与 Stair 对齐：15s episode，奖励时间窗按 15/6 = 2.5 倍拉长。
+  cfg.rewards["track_target_bias"].params["goal_deadzone"] = 0.0
+  cfg.episode_length_s = 15.0
+  cfg.rewards["track_target_position"].weight = 2.0  # (1 / t_r) * 10, t_r = 5
+  cfg.rewards["track_target_position"].params["t_r"] = 5.0
+  cfg.rewards["track_target_bias"].params["t_r"] = 10.0
+  cfg.rewards["standstill"].params["t_r"] = 5.0
+  cfg.rewards["stand_pose"].params["t_r"] = 5.0
+
   
   if play:
     cfg.scene.num_envs = 1
     cfg.scene.terrain.max_init_terrain_level = 5
-  
-  # 3. 楼梯任务指令参数平滑与重采样
-  cmd_height = cfg.commands["Base_height_target"]
-  assert isinstance(cmd_height, HeightTargetCommandCfg)
-  cmd_height.nominal_height = 0.25
-  cmd_height.height_smooth_alpha = 0.05
-  
-  cmd_head = cfg.commands["Heading_error"]
-  assert isinstance(cmd_head, HeadErrorCommandCfg)
-  cmd_head.resampling_time_range = (10.0, 10.0)
-  
-  cmd_goal = cfg.commands["Goal_direction"]
-  assert isinstance(cmd_goal, GoalDirectionCommandCfg)
-  cmd_goal.cardinal_directions = ("E",)
-  # 出生点已改到第一平台前方的地面 (spawn_on_platform=False)：
-  # 到第二平台中心的距离 = spawn_distance_before(1.5)
-  #   + 台阶总长(0.64) + 第一平台长度(0.8)
-  #   + 中间 5 个 0.2m 小平台 + 6 段 0.01~0.50m 间隙
-  #   + 第二平台半长(0.4)
-  # 实际距离会随地形难度变化，由 update_platform_goal_distance 在 reset 时
-  # 写入 command.target_distances；这里的 5.87m 只是中间难度下的静态初值。
-  cmd_goal.target_distance = 5.87
-  cmd_goal.resampling_time_range = (10.0, 10.0)
-  
 
   
   return cfg

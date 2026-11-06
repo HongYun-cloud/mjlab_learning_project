@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
-from mjlab.utils.lab_api.math import wrap_to_pi
+from mjlab.utils.lab_api.math import euler_xyz_from_quat, wrap_to_pi
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -56,37 +56,65 @@ def _get_goal_pos(
     return goal_pos
 
 
+def _get_foot_center_xy(
+    asset: Entity,
+    foot_body_names: tuple[str, ...],
+) -> torch.Tensor:
+    """Mean XY position of the given foot bodies in the env-local frame."""
+    body_names = list(asset.body_names)
+    ids = [body_names.index(name) for name in foot_body_names]
+    return asset.data.body_link_pos_w[:, ids, :2].mean(dim=1)
+
+
 def track_target_position(
     env: ManagerBasedRlEnv,
     t_r: float = 2.0,
     command_name: str = "Goal_direction",
+    foot_body_names: tuple[str, ...] | None = None,
+    height_command_name: str | None = None,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     dense: bool = True,
     **kwargs,
 ) -> torch.Tensor:
     """Reward for tracking target position.
 
-    When dense=True (recommended), provides continuous dense reward throughout the episode:
+    XY uses the four-foot center when ``foot_body_names`` is provided; Z uses
+    the base link height against ``Base_height_target`` when
+    ``height_command_name`` is provided.
+
+    When dense=True:
         1 / (1 + ||x - r_goal||^2)
     When dense=False:
-        (1 / T_r) * (1 / (1 + ||x - r_goal||^2))  if t > T - T_r else 0
+        1 / (1 + ||x - r_goal||^2)  if t > T - t_r else 0
     """
     asset: Entity = env.scene[asset_cfg.name]
-    # 机器人当前在环境局部坐标系下的位置
-    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
     goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+    goal_xy = goal_pos[:, :2]
 
-    # 计算与目标的误差向量与距离平方 ||x - r_goal||^2
-    dim = goal_pos.shape[-1]
-    pos_error = robot_pos[:, :dim] - goal_pos
-    dist_sq = torch.sum(torch.square(pos_error), dim=-1)
+    if foot_body_names is not None:
+        robot_xy = _get_foot_center_xy(asset, foot_body_names) - env.scene.env_origins[:, :2]
+    else:
+        robot_xy = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
+
+    xy_error = robot_xy - goal_xy
+    dist_sq = torch.sum(torch.square(xy_error), dim=-1)
+
+    if (
+        height_command_name is not None
+        and height_command_name in env.command_manager.active_terms
+    ):
+        base_z = asset.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
+        target_z = env.command_manager.get_command(height_command_name)
+        if target_z.ndim > 1:
+            target_z = target_z.squeeze(-1)
+        target_z = target_z.to(device=base_z.device, dtype=base_z.dtype)
+        dist_sq = dist_sq + torch.square(base_z - target_z)
 
     if dense:
         # 全程提供连续的位置收敛奖励，让机器人每前进一步都有正向反馈
         return 1.0 / (1.0 + dist_sq)
 
-    inv_t_r = 1.0 / t_r if t_r > 0 else 1.0
-    reward = inv_t_r / (1.0 + dist_sq)
+    reward = 1.0 / (1.0 + dist_sq)
 
     # 条件判断: if t > T - T_r
     current_time = env.episode_length_buf * env.step_dt
@@ -95,7 +123,337 @@ def track_target_position(
     return torch.where(time_mask, reward, torch.zeros_like(reward))
 
 
-def track_target_bias(
+def standstill(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    distance_threshold: float = 0.25,
+    heading_threshold: float = 0.5,
+    t_r: float = 2.0,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Standstill penalty magnitude near the goal.
+
+    Gate:
+        ||p_t - p_t^*|| < distance_threshold
+        ||q_t - q_*|| < heading_threshold   (yaw/heading error to goal, rad)
+        t > T - t_r
+
+    Value:
+        2.5 * ||base_lin_vel|| + ||base_ang_vel||
+
+    The task config gives this term a weight of -1, so the actual reward is
+    negative inside the gate and zero outside.
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+
+    dim = goal_pos.shape[-1]
+    dist = torch.linalg.norm(robot_pos[:, :dim] - goal_pos, dim=-1)
+
+    heading_error = None
+    if command_name in env.command_manager.active_terms:
+        command_term = env.command_manager.get_term(command_name)
+        if hasattr(command_term, "heading_error"):
+            heading_error = command_term.heading_error
+            if heading_error.ndim > 1:
+                heading_error = heading_error.squeeze(-1)
+    if heading_error is None:
+        to_goal = goal_pos[:, :2] - robot_pos[:, :2]
+        target_yaw = torch.atan2(to_goal[:, 1], to_goal[:, 0])
+        heading_error = wrap_to_pi(target_yaw - asset.data.heading_w)
+    heading_ok = heading_error.abs() < heading_threshold
+
+    current_time = env.episode_length_buf * env.step_dt
+    time_ok = current_time > (env.max_episode_length_s - t_r)
+    gate = (dist < distance_threshold) & heading_ok & time_ok
+
+    lin_speed = torch.linalg.norm(asset.data.root_link_lin_vel_w, dim=-1)
+    ang_speed = torch.linalg.norm(asset.data.root_link_ang_vel_w, dim=-1)
+    value = 2.5 * lin_speed + ang_speed
+    return torch.where(gate, value, torch.zeros_like(value))
+
+
+def base_accel_penalty(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    angular_scale: float = 0.02,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize base linear/angular acceleration.
+
+    Formula:
+        ||base_lin_acc||^2 + angular_scale * ||base_ang_acc||^2
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    adr = asset.indexing.free_joint_v_adr
+    if len(adr) < 6:
+        return torch.zeros(env.num_envs, device=env.device)
+    acc = asset.data.data.qacc[:, adr]
+    lin_sq = torch.sum(torch.square(acc[:, :3]), dim=-1)
+    ang_sq = torch.sum(torch.square(acc[:, 3:6]), dim=-1)
+    return lin_sq + angular_scale * ang_sq
+
+
+def joint_vel_limit(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    vel_limit: float | tuple[float, ...] = 20.0,
+    limit_ratio: float = 0.9,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize joint velocities exceeding a soft limit.
+
+    Formula:
+        sum_i max(|dot{q}_i| - limit_ratio * dot{q}_lim_i, 0)
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    vel = asset.data.joint_vel[:, asset_cfg.joint_ids].abs()
+    if isinstance(vel_limit, (int, float)):
+        limit = torch.full_like(vel, float(vel_limit))
+    else:
+        limit = torch.as_tensor(vel_limit, device=vel.device, dtype=vel.dtype)
+        limit = limit.reshape(1, -1).expand_as(vel)
+    excess = torch.clamp(vel - limit_ratio * limit, min=0.0)
+    return torch.sum(excess, dim=-1)
+
+
+def joint_power_penalty(
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    vel_norm: float = 30.0,
+    torque_norm: float = 25.0,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize normalized squared joint power.
+
+    Formula:
+        sum_i ((dot{q}_i / vel_norm) * (tau_i / torque_norm))^2
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    qdot = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    tau = asset.data.qfrc_actuator[:, asset_cfg.joint_ids]
+    power = (qdot / vel_norm) * (tau / torque_norm)
+    return torch.sum(torch.square(power), dim=-1)
+
+
+class FootAccelPenalty:
+    """Penalize the sum of per-foot linear acceleration magnitudes.
+
+    Uses finite differences of foot body linear velocities:
+        sum_{4 feet} ||(v_t - v_{t-1}) / dt||
+    """
+
+    def __init__(self, cfg, env: ManagerBasedRlEnv):
+        self._env = env
+        self._prev_vel: torch.Tensor | None = None
+        self._fresh = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        self._fresh[env_ids] = True
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+        **kwargs,
+    ) -> torch.Tensor:
+        asset: Entity = env.scene[asset_cfg.name]
+        vel = asset.data.body_link_lin_vel_w[:, asset_cfg.body_ids, :]
+        if self._prev_vel is None or self._prev_vel.shape != vel.shape:
+            self._prev_vel = torch.zeros_like(vel)
+            self._fresh[:] = True
+
+        acc = (vel - self._prev_vel) / env.step_dt
+        acc = torch.where(self._fresh[:, None, None], torch.zeros_like(acc), acc)
+        self._prev_vel.copy_(vel)
+        self._fresh[:] = False
+        return torch.sum(torch.linalg.norm(acc, dim=-1), dim=-1)
+
+
+def end_pose(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    distance_threshold: float = 0.25,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize body pitch and roll near the goal.
+
+    Formula:
+        |pitch| + |roll|
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    robot_pos = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)[:, :2]
+    dist = torch.linalg.norm(goal_pos - robot_pos, dim=-1)
+
+    roll, pitch, _ = euler_xyz_from_quat(asset.data.root_link_quat_w)
+    value = torch.abs(pitch) + torch.abs(roll)
+    return torch.where(dist < distance_threshold, value, torch.zeros_like(value))
+
+
+def end_position(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    distance_threshold: float = 0.2,
+    scale: float = 0.05,
+    foot_body_names: tuple[str, ...] | None = None,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Dense exponential position reward near the goal.
+
+    Formula (only when foot-center XY error < distance_threshold):
+        exp(-error_xy / scale)
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)[:, :2]
+
+    if foot_body_names is not None:
+        robot_xy = (
+            _get_foot_center_xy(asset, foot_body_names)
+            - env.scene.env_origins[:, :2]
+        )
+    else:
+        robot_xy = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
+
+    error = torch.linalg.norm(robot_xy - goal_pos, dim=-1)
+    value = torch.exp(-error / max(scale, 1e-6))
+    return torch.where(
+        error < distance_threshold, value, torch.zeros_like(value)
+    )
+
+
+def speed_limit_penalty(
+    env: ManagerBasedRlEnv,
+    max_speed: float = 0.5,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize horizontal base speed above max_speed.
+
+    Formula:
+        x = max(||v_xy|| - max_speed, 0)
+        reward = exp(x / e) - 1
+    """
+    vel = env.scene["robot"].data.root_link_lin_vel_w[:, :2]
+    speed = torch.linalg.norm(vel, dim=-1)
+    excess = torch.clamp(speed - max_speed, min=0.0)
+    return torch.exp(excess / math.e) - 1.0
+
+
+def aggressive_motion_penalty(
+    env: ManagerBasedRlEnv,
+    max_speed: float = 1.0,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize horizontal base speed above max_speed.
+
+    Formula:
+        (||v_xy|| - max_speed)^2 * 1(||v_xy|| > max_speed)
+    """
+    vel = env.scene["robot"].data.root_link_lin_vel_w[:, :2]
+    speed = torch.linalg.norm(vel, dim=-1)
+    excess = torch.clamp(speed - max_speed, min=0.0)
+    return torch.square(excess)
+
+
+def foot_contact_pattern_penalty(
+    env: ManagerBasedRlEnv,
+    sensor_name: str = "feet_ground_contact",
+    min_contacts: int = 1,
+    max_contacts: int = 3,
+    goal_distance_threshold: float | None = None,
+    goal_max_contacts: int = 4,
+    command_name: str = "Goal_direction",
+    **kwargs,
+) -> torch.Tensor:
+    """Return 1.0 when foot contact count is outside the allowed range.
+
+    If ``goal_distance_threshold`` is set, allow up to ``goal_max_contacts``
+    contacts near the goal (e.g. 4 feet for a stable final stance).
+    """
+    sensors = getattr(env.scene, "sensors", {})
+    if sensor_name not in sensors:
+        return torch.zeros(env.num_envs, device=env.device)
+    found = sensors[sensor_name].data.found
+    if found is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    if found.ndim == 3:
+        found = found.squeeze(-1)
+    count = (found > 0).sum(dim=-1)
+
+    max_allowed = torch.full_like(count, max_contacts)
+    if (
+        goal_distance_threshold is not None
+        and command_name in env.command_manager.active_terms
+    ):
+        asset = env.scene["robot"]
+        robot_pos = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
+        goal_pos = _get_goal_pos(env, command_name=command_name)[:, :2]
+        dist = torch.linalg.norm(goal_pos - robot_pos, dim=-1)
+        max_allowed = torch.where(
+            dist < goal_distance_threshold,
+            torch.full_like(count, goal_max_contacts),
+            max_allowed,
+        )
+
+    invalid = (count < min_contacts) | (count > max_allowed)
+    return invalid.float()
+
+
+def goal_four_foot_contact_penalty(
+    env: ManagerBasedRlEnv,
+    sensor_name: str = "feet_ground_contact",
+    distance_threshold: float = 0.25,
+    min_contacts: int = 4,
+    command_name: str = "Goal_direction",
+    **kwargs,
+) -> torch.Tensor:
+    """Return 1.0 when near the goal with fewer than min_contacts feet down."""
+    sensors = getattr(env.scene, "sensors", {})
+    if sensor_name not in sensors:
+        return torch.zeros(env.num_envs, device=env.device)
+    found = sensors[sensor_name].data.found
+    if found is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    if found.ndim == 3:
+        found = found.squeeze(-1)
+    count = (found > 0).sum(dim=-1)
+
+    asset = env.scene["robot"]
+    robot_pos = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
+    goal_pos = _get_goal_pos(env, command_name=command_name)[:, :2]
+    dist = torch.linalg.norm(goal_pos - robot_pos, dim=-1)
+    return ((dist < distance_threshold) & (count < min_contacts)).float()
+
+
+def collision_penalty(
+    env: ManagerBasedRlEnv,
+    sensor_names: tuple[str, ...] = (
+        "self_collision",
+        "thigh_ground_touch",
+        "shank_ground_touch",
+    ),
+    **kwargs,
+) -> torch.Tensor:
+    """Return 1.0 if any non-foot collision sensor detects contact, else 0.0."""
+    hit = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+    sensors = getattr(env.scene, "sensors", {})
+    for name in sensor_names:
+        if name not in sensors:
+            continue
+        found = sensors[name].data.found
+        if found is None:
+            continue
+        hit |= (found > 0).reshape(env.num_envs, -1).any(dim=-1)
+    return hit.float()
+
+
+def move_in_direction(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
@@ -103,13 +461,10 @@ def track_target_bias(
     goal_deadzone: float = 0.0,
     **kwargs,
 ) -> torch.Tensor:
-    r"""Reward for tracking target bias: cosine similarity between velocity and direction to goal.
+    r"""Cosine similarity between base velocity and direction to goal.
 
     Formula:
         (\dot{x} \cdot (r_{goal} - x)) / (||\dot{x}|| * ||r_{goal} - x||)
-
-    ``goal_deadzone``: 距离目标小于该值时直接返回 0，避免终点附近方向
-    向量过小导致奖励抖动。
     """
     asset: Entity = env.scene[asset_cfg.name]
     robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
@@ -128,6 +483,175 @@ def track_target_bias(
     if goal_deadzone > 0.0:
         reward = torch.where(
             to_goal_norm > goal_deadzone,
+            reward,
+            torch.zeros_like(reward),
+        )
+    return reward
+
+
+class MoveInDirectionFirstN:
+    """Cosine move-in-direction reward active for the first N reward steps.
+
+    The counter is per environment instance/run and is never restored from a
+    checkpoint, so resuming training starts a new N-step window.
+    """
+
+    def __init__(self, cfg, env: ManagerBasedRlEnv):
+        self._steps = 0
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        switch_step: int = 3600,
+        **kwargs,
+    ) -> torch.Tensor:
+        self._steps += 1
+        if self._steps > switch_step:
+            return torch.zeros(env.num_envs, device=env.device)
+        return move_in_direction(env, **kwargs)
+
+
+def stand_pose(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    distance_threshold: float = 0.25,
+    contact_distance_threshold: float = 0.15,
+    contact_vel_threshold: float = 0.05,
+    t_r: float = 1.0,
+    height_command_name: str | None = "Base_height_target",
+    nominal_height: float = 0.28,
+    sensor_name: str | None = "feet_ground_contact",
+    min_contacts: int = 4,
+    contact_penalty: float = 1.0,
+    foot_body_names: tuple[str, ...] | None = None,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize base height error, body tilt, and non-four-foot stance near goal.
+
+    Formula:
+        |z - z*| + gx^2 + gy^2 + contact_penalty * 1(count < min_contacts)
+
+    The height/tilt part is gated by ``t > T - t_r``. The four-foot requirement
+    applies when the robot is within ``contact_distance_threshold`` and its
+    linear speed is below ``contact_vel_threshold`` (i.e. it has stopped).
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+
+    dist = torch.linalg.norm(robot_pos[:, :2] - goal_pos[:, :2], dim=-1)
+    near_goal = dist < distance_threshold
+
+    current_time = env.episode_length_buf * env.step_dt
+    time_ok = current_time > (env.max_episode_length_s - t_r)
+    gate = near_goal & time_ok
+
+    base_z = asset.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
+    target_z = torch.full_like(base_z, nominal_height)
+    if (
+        height_command_name is not None
+        and height_command_name in env.command_manager.active_terms
+    ):
+        command_z = env.command_manager.get_command(height_command_name)
+        if command_z.ndim > 1:
+            command_z = command_z.squeeze(-1)
+        target_z = command_z.to(device=base_z.device, dtype=base_z.dtype)
+
+    gravity = asset.data.projected_gravity_b
+    tilt_sq = torch.square(gravity[:, 0]) + torch.square(gravity[:, 1])
+    value = torch.where(
+        gate,
+        torch.abs(base_z - target_z) + tilt_sq,
+        torch.zeros_like(base_z),
+    )
+
+    contact_violation = torch.zeros_like(base_z)
+    sensors = getattr(env.scene, "sensors", {})
+    if sensor_name is not None and sensor_name in sensors:
+        found = sensors[sensor_name].data.found
+        if found is not None:
+            if found.ndim == 3:
+                found = found.squeeze(-1)
+            count = (found > 0).sum(dim=-1)
+            contact_violation = (count < min_contacts).float() * contact_penalty
+
+    lin_speed = torch.linalg.norm(asset.data.root_link_lin_vel_w, dim=-1)
+    if foot_body_names is not None:
+        contact_robot_xy = (
+            _get_foot_center_xy(asset, foot_body_names)
+            - env.scene.env_origins[:, :2]
+        )
+    else:
+        contact_robot_xy = robot_pos[:, :2]
+    contact_dist = torch.linalg.norm(
+        contact_robot_xy - goal_pos[:, :2], dim=-1
+    )
+    contact_gate = (contact_dist < contact_distance_threshold) & (
+        lin_speed <= contact_vel_threshold
+    )
+    return value + torch.where(
+        contact_gate, contact_violation, torch.zeros_like(contact_violation)
+    )
+
+
+def track_target_bias(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    distance_threshold: float | None = None,
+    t_r: float | None = None,
+    goal_deadzone: float = 0.0,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Reward for heading alignment with the target direction.
+
+    Formula:
+        1 / (1 + ||heading_error||^2)
+
+    ``heading_error`` is the signed yaw difference between the robot heading
+    and the direction from the robot to the goal, in radians.
+    ``distance_threshold``/``t_r``: optional gate; when provided, the reward is
+    nonzero only if distance to goal < threshold and t > T - t_r.
+    ``goal_deadzone``: return 0 when the robot is within this distance of the
+    goal.
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+
+    dim = goal_pos.shape[-1]
+    dist = torch.linalg.norm(robot_pos[:, :dim] - goal_pos, dim=-1)
+
+    heading_error = None
+    if command_name in env.command_manager.active_terms:
+        command_term = env.command_manager.get_term(command_name)
+        if hasattr(command_term, "heading_error"):
+            heading_error = command_term.heading_error
+            if heading_error.ndim > 1:
+                heading_error = heading_error.squeeze(-1)
+    if heading_error is None:
+        to_goal = goal_pos[:, :2] - robot_pos[:, :2]
+        target_yaw = torch.atan2(to_goal[:, 1], to_goal[:, 0])
+        heading_error = wrap_to_pi(target_yaw - asset.data.heading_w)
+
+    reward = 1.0 / (1.0 + torch.square(heading_error))
+    if goal_deadzone > 0.0:
+        reward = torch.where(
+            dist > goal_deadzone,
+            reward,
+            torch.zeros_like(reward),
+        )
+    if distance_threshold is not None:
+        reward = torch.where(
+            dist < distance_threshold,
+            reward,
+            torch.zeros_like(reward),
+        )
+    if t_r is not None:
+        current_time = env.episode_length_buf * env.step_dt
+        reward = torch.where(
+            current_time > (env.max_episode_length_s - t_r),
             reward,
             torch.zeros_like(reward),
         )
@@ -181,33 +705,31 @@ def stall_penalty(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
-    vel_threshold: float = 0.1,
+    foot_body_names: tuple[str, ...] | None = None,
+    vel_threshold: float = 0.2,
     dist_threshold: float = 0.1,
     penalty_value: float = -2.0,
     **kwargs,
 ) -> torch.Tensor:
     """Penalty for stalling when far away from the goal.
 
-    Formula:
-        penalty_value (-2.0)  if ||x_dot|| < 0.1 m/s and ||x - r_goal|| > 0.1 m
-        0                     otherwise
-
-    目标点 0.1m 范围内不惩罚，允许机器人到点后停稳/站立。
+    Distance uses the four-foot center XY when ``foot_body_names`` is given;
+    otherwise it falls back to the base link XY.
     """
     asset: Entity = env.scene[asset_cfg.name]
-    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
-    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)[:, :2]
 
-    dim = goal_pos.shape[-1]
-    pos_error = robot_pos[:, :dim] - goal_pos
-    dist = torch.linalg.norm(pos_error, dim=-1)
-    # print(f"pos_error:{pos_error}")
-    # print(f"dist:{dist}")
+    if foot_body_names is not None:
+        robot_xy = (
+            _get_foot_center_xy(asset, foot_body_names)
+            - env.scene.env_origins[:, :2]
+        )
+    else:
+        robot_xy = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
 
-    vel = asset.data.root_link_lin_vel_w[:, :dim]
+    dist = torch.linalg.norm(robot_xy - goal_pos, dim=-1)
+    vel = asset.data.root_link_lin_vel_w[:, :2]
     vel_norm = torch.linalg.norm(vel, dim=-1)
-    # print(f"vel:{vel}")
-    # print(f"vel_norm:{vel_norm}")
 
     is_stalled = (vel_norm < vel_threshold) & (dist > dist_threshold)
     return torch.where(is_stalled, torch.full_like(dist, penalty_value), torch.zeros_like(dist))
@@ -219,12 +741,14 @@ def face_target(
     goal_command_name: str = "Goal_direction",
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     dist_threshold: float = 0.5,
+    min_heading_error: float = 0.0,
     **kwargs,
 ) -> torch.Tensor:
     """Reward for facing the target when far from goal.
 
     Formula:
-        -||θ - θ_goal||  if ||x - r_goal|| > 0.5 m
+        -||θ - θ_goal||  if ||x - r_goal|| > dist_threshold
+                         and ||θ - θ_goal|| > min_heading_error
         0                otherwise
     """
     asset: Entity = env.scene[asset_cfg.name]
@@ -257,7 +781,8 @@ def face_target(
 
     # -||θ - θ_goal||
     reward = -heading_err
-    return torch.where(dist > dist_threshold, reward, torch.zeros_like(reward))
+    gate = (dist > dist_threshold) & (heading_err > min_heading_error)
+    return torch.where(gate, reward, torch.zeros_like(reward))
 
 
 def base_angular_velocity_penalty(
@@ -282,35 +807,39 @@ def reach_target(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",
     distance_threshold: float = 0.05,
+    foot_body_names: tuple[str, ...] | None = None,
+    height_command_name: str | None = None,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     min_steps: int = 2,
     **kwargs,
 ) -> torch.Tensor:
-    """到达目标点指定距离（默认 5cm = 0.05m）以内后判定为成功，触发环境重置。
+    """到达目标点指定距离以内后判定为成功。
 
-    Parameters
-    ----------
-    env:
-        当前环境实例。
-    command_name:
-        目标指令名称，默认 "Goal_direction"。
-    distance_threshold:
-        成功判定阈值距离（米），默认 0.05（5cm）。
-    asset_cfg:
-        机器人实体配置。
-    min_steps:
-        最小步数限制，避免刚 reset 初始步误触发。
-
-    Returns
-    -------
-    torch.Tensor (bool):
-        达到 5cm 目标判据的环境掩码。
+    XY 使用四足中心（``foot_body_names`` 提供时），Z 使用 base link 高度与
+    ``Base_height_target`` 的误差。
     """
     asset: Entity = env.scene[asset_cfg.name]
-    robot_pos = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
-    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)[:, :2]
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+    goal_xy = goal_pos[:, :2]
 
-    dist = torch.linalg.norm(robot_pos - goal_pos, dim=-1)
+    if foot_body_names is not None:
+        robot_xy = _get_foot_center_xy(asset, foot_body_names) - env.scene.env_origins[:, :2]
+    else:
+        robot_xy = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
+
+    pos_error_sq = torch.sum(torch.square(robot_xy - goal_xy), dim=-1)
+    if (
+        height_command_name is not None
+        and height_command_name in env.command_manager.active_terms
+    ):
+        base_z = asset.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
+        target_z = env.command_manager.get_command(height_command_name)
+        if target_z.ndim > 1:
+            target_z = target_z.squeeze(-1)
+        target_z = target_z.to(device=base_z.device, dtype=base_z.dtype)
+        pos_error_sq = pos_error_sq + torch.square(base_z - target_z)
+
+    dist = torch.sqrt(pos_error_sq)
     reached = dist <= distance_threshold
 
     # 忽略刚 reset 的前 min_steps 步

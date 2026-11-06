@@ -14,7 +14,7 @@ train_parse_args "$@"
 TASK="Mjlab-Tracking-Stair-Unitree-Go2"
 PROJECT="track_stair"
 NUM_ENVS=512
-MAX_ITERATIONS=3000
+MAX_ITERATIONS=5000
 
 echo "======================================"
 echo "       Go2 Stair Tracking Training"

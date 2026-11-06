@@ -287,6 +287,34 @@ def heading_to_goal_error(
     return head_err.unsqueeze(-1)
 
 
+def target_distance(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    """当前机身到目标点的 XY 距离. Shape: (num_envs, 1)."""
+    asset: Entity = env.scene[asset_cfg.name]
+    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+    dist = torch.linalg.norm(goal_pos[:, :2] - robot_pos[:, :2], dim=-1)
+    return dist.unsqueeze(-1)
+
+
+def time_left(
+    env: ManagerBasedRlEnv,
+    normalize: bool = True,
+    **kwargs,
+) -> torch.Tensor:
+    """剩余 episode 时间. 默认归一化到 [0, 1]. Shape: (num_envs, 1)."""
+    remaining = (
+        env.max_episode_length - env.episode_length_buf
+    ).clamp(min=0).float() * env.step_dt
+    if normalize:
+        remaining = remaining / max(float(env.max_episode_length_s), 1e-6)
+    return remaining.unsqueeze(-1)
+
+
 # ==============================================================================
 # Critic 特权观测项
 # ==============================================================================

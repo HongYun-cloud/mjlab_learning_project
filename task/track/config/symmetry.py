@@ -62,6 +62,8 @@ _INVARIANT_TERMS = {
     "height_command",
     "base_height",
     "Friction_coefficient",
+    "target_distance",
+    "time_left",
 }
 
 _FOOT_TERMS = {

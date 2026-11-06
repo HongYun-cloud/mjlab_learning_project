@@ -259,13 +259,18 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     rewards = {
       "track_target_position": RewardTermCfg(
         func=track_target_position,
-        weight=10.0,
-        params={"command_name": "Goal_direction", "dense": False},
+        # (1 / t_r) * 10，t_r = 2.0s -> 5.0
+        weight=5.0,
+        params={
+          "command_name": "Goal_direction",
+          "t_r": 2.0,
+          "dense": False,
+        },
       ),
       "track_target_bias": RewardTermCfg(
         func=track_target_bias,
         weight=1.5,
-        params={"command_name": "Goal_direction", "goal_deadzone": 0.10},
+        params={"command_name": "Goal_direction", "goal_deadzone": 0.15},
       ),
       # 机身高度奖励：仅跟踪 Base_height_target 高度指令。
       "track_base_height": RewardTermCfg(

@@ -134,6 +134,8 @@ def terrain_levels_reach_target(
     required_reach_count: int = 3,
     num_fails_to_level_down: int = 5,
     allow_downgrade: bool = True,
+    max_level: int | None = None,
+    randomize_at_max: bool = True,
     increase_distance_on_flat: bool = False,
     distance_step: float = 0.5,
     max_distance: float = 5.0,
@@ -235,7 +237,25 @@ def terrain_levels_reach_target(
     )
 
     if has_terrain_gen:
+        old_levels = terrain.terrain_levels[env_ids].clone()
         terrain.update_env_origins(env_ids, move_up, move_down)
+
+        # 到达 max_level 后不再继续加难，而是在 [0, max_level] 随机训练。
+        if max_level is not None and randomize_at_max:
+            max_level = min(max_level, terrain.terrain_origins.shape[0] - 1)
+            reset_level_mask = old_levels >= max_level
+            if reset_level_mask.any():
+                reset_ids = env_ids[reset_level_mask]
+                new_levels = torch.randint(
+                    0,
+                    max_level + 1,
+                    (len(reset_ids),),
+                    device=env.device,
+                )
+                terrain.terrain_levels[reset_ids] = new_levels
+                terrain.env_origins[reset_ids] = terrain.terrain_origins[
+                    new_levels, terrain.terrain_types[reset_ids]
+                ]
     elif increase_distance_on_flat and command_name in env.command_manager.active_terms:
         cmd_term = env.command_manager.get_term(command_name)
         if not hasattr(cmd_term, "target_distances"):

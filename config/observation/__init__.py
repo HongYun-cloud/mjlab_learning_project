@@ -8,7 +8,9 @@ from .Trackingobservation import (
     friction_coefficient,
     heading_to_goal_error,
     resolve_terrain_type,
+    target_distance,
     terrain_type,
+    time_left,
 )
 from .Tamolsobservation import (
     base_twist,
@@ -35,6 +37,8 @@ __all__ = [
     "terrain_type",
     "direction_to_goal",
     "heading_to_goal_error",
+    "target_distance",
+    "time_left",
     "base_height",
     "direction_real",
     "friction_coefficient",

@@ -361,10 +361,27 @@ class GoalDirectionCommand(CommandTerm):
         env_origins = self._env.scene.env_origins.cpu().numpy()
         targets_local = self.target_pos.cpu().numpy()
 
-        # target_heights 等于 command 里 Base_height_target 里的 nominal_height
+        # 当前是否已经到达终点；使用与课程/到达判定相同的四足中心 + 高度口径。
+        try:
+            from myrobot_mjlab.config.reward.Trackingreward import reach_target
+
+            reached_mask = reach_target(
+                self._env,
+                command_name="Goal_direction",
+                distance_threshold=0.15,
+                foot_body_names=("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+                height_command_name="Base_height_target",
+            ).cpu().numpy()
+        except Exception:
+            reached_mask = np.zeros(self.num_envs, dtype=np.bool_)
+
+        # target_heights 使用当前 Base_height_target 指令：
+        # ground_z + nominal_height，因此在平台上会跟随平台高度。
         if "Base_height_target" in self._env.command_manager.active_terms:
             height_cmd_term = self._env.command_manager.get_term("Base_height_target")
-            target_heights = float(height_cmd_term.cfg.nominal_height)
+            target_heights = (
+                height_cmd_term.command.squeeze(-1).detach().cpu().numpy()
+            )
         else:
             target_heights = None
 
@@ -378,29 +395,38 @@ class GoalDirectionCommand(CommandTerm):
             target_x = float(origin[0] + targets_local[batch, 0])
             target_y = float(origin[1] + targets_local[batch, 1])
 
-            # 目标落点 z：优先用 target_heights (nominal_height)，否则 fallback
+            # 目标落点 z：优先用当前高度指令，否则 fallback
             base_z = float(origin[2])
             if target_heights is not None:
-                ref_z = target_heights
+                ref_z = float(target_heights[batch])
             else:
                 ref_z = max(float(robot_pos[2]), base_z)
 
             # 1. 竖立的鲜艳标杆 (从地面延伸至空中 1.4m，无论地形起伏都清晰可见)
+            is_reached = bool(reached_mask[batch])
             pole_bottom = np.array([target_x, target_y, base_z - 0.2], dtype=np.float32)
             pole_top = np.array([target_x, target_y, base_z + ref_z + 1.2], dtype=np.float32)
             visualizer.add_cylinder(
                 start=pole_bottom,
                 end=pole_top,
                 radius=0.035,
-                color=(1.0, 0.25, 0.0, 0.9),  # 亮红橙色标杆
+                color=(
+                    (0.1, 1.0, 0.2, 0.95)
+                    if is_reached
+                    else (1.0, 0.25, 0.0, 0.9)
+                ),
                 label=f"goal_pole_{batch}",
             )
 
-            # 2. 标杆顶部的发光红色大标志球 (半径 0.2m)
+            # 2. 标杆顶部的发光大标志球 (半径 0.2m)
             visualizer.add_sphere(
                 center=pole_top,
                 radius=0.20,
-                color=(1.0, 0.05, 0.05, 0.95),  # 鲜艳红色信号球
+                color=(
+                    (0.1, 1.0, 0.2, 0.95)
+                    if is_reached
+                    else (1.0, 0.05, 0.05, 0.95)
+                ),
                 label=f"goal_top_{batch}",
             )
 
@@ -408,7 +434,11 @@ class GoalDirectionCommand(CommandTerm):
             visualizer.add_sphere(
                 center=np.array([target_x, target_y, ref_z], dtype=np.float32),
                 radius=0.15,
-                color=(1.0, 0.7, 0.0, 0.85),  # 金黄色落点球
+                color=(
+                    (0.1, 1.0, 0.2, 0.9)
+                    if is_reached
+                    else (1.0, 0.7, 0.0, 0.85)
+                ),
                 label=f"goal_base_{batch}",
             )
 

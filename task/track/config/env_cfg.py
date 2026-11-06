@@ -32,6 +32,9 @@ from mjlab.terrains import TerrainEntityCfg
 from myrobot_mjlab.config.terrain.stair_terrain import STAIRS_TERRAINS_CFG
 from myrobot_mjlab.config.terrain.tire_array import TIRE_ARRAY_TERRAINS_CFG
 from myrobot_mjlab.config.terrain.step_platform_terrain import STEP_PLATFORM_TERRAINS_CFG
+from myrobot_mjlab.config.terrain.plum_blossom_field_terrain import (
+    PLUM_BLOSSOM_FIELD_TERRAINS_CFG,
+)
 from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_reach_target
 from myrobot_mjlab.config.event.stair_reset import reset_root_state_from_stair,out_of_patch_bounds
 from myrobot_mjlab.config.event.tire_reset import reset_root_state_from_tire
@@ -601,6 +604,64 @@ def update_platform_goal_distance(
   )
 
 
+def _apply_platform_like_config(
+  cfg: ManagerBasedRlEnvCfg,
+  *,
+  out_of_patch_params: dict[str, float],
+) -> None:
+  """Apply the Platform-style rewards, terminations, and episode settings."""
+  # 头部/躯干与地形的接触传感器：只用于终止，不进奖励。
+  trunk_head_ground_cfg = ContactSensorCfg(
+    name="trunk_head_ground_touch",
+    primary=ContactMatch(mode="body", pattern="base_link", entity="robot"),
+    secondary=ContactMatch(mode="body", pattern="terrain"),
+    fields=("found", "force"),
+    reduce="none",
+    num_slots=1,
+    history_length=4,
+  )
+  cfg.scene.sensors = tuple(cfg.scene.sensors or ()) + (trunk_head_ground_cfg,)
+
+  for key in ("self_collisions", "trunk_head_collision", "air_time"):
+    cfg.rewards.pop(key, None)
+
+  cfg.rewards["shank_collision"] = RewardTermCfg(
+    func=mdp.self_collision_cost,
+    weight=-0.1,
+    params={"sensor_name": "shank_ground_touch"},
+  )
+
+  cfg.terminations["illegal_contact"] = TerminationTermCfg(
+    func=mdp.illegal_contact,
+    params={"sensor_name": "thigh_ground_touch"},
+  )
+  cfg.terminations["trunk_head_collision"] = TerminationTermCfg(
+    func=mdp.illegal_contact,
+    params={"sensor_name": "trunk_head_ground_touch"},
+  )
+
+  cfg.terminations.pop("reached_edge", None)
+  cfg.terminations.pop("fell_over", None)
+  cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
+    func=out_of_patch_bounds,
+    time_out=True,
+    params=out_of_patch_params,
+  )
+
+  # 与 Platform/Stair 对齐的 episode 和奖励时间窗。
+  cfg.rewards["track_target_bias"].params["goal_deadzone"] = 0.0
+  cfg.episode_length_s = 15.0
+  cfg.rewards["track_target_position"].weight = 2.0
+  cfg.rewards["track_target_position"].params["t_r"] = 5.0
+  cfg.rewards["track_target_bias"].params["t_r"] = 10.0
+  cfg.rewards["standstill"].params["t_r"] = 5.0
+  cfg.rewards["stand_pose"].params["t_r"] = 5.0
+
+  # Platform 的额外权重调整。
+  cfg.rewards["torque_penalty"].weight = -1.0e-4
+  cfg.rewards["aggressive_motion"].weight = -4.0
+
+
 def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
   cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
@@ -622,53 +683,9 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.commands["Goal_direction"].cardinal_directions = (
     direction_to_cardinal[platform_sub.direction],
   )
-  cfg.rewards["torque_penalty"].weight = -1.0e-4
-  cfg.rewards["aggressive_motion"].weight = -4.0
-
-  # 头部/躯干与地形的接触传感器：只用于终止，不进奖励。
-  # Go2 模型的 trunk/head 碰撞几何都属于 base_link，因此这里按 body 匹配。
-  trunk_head_ground_cfg = ContactSensorCfg(
-    name="trunk_head_ground_touch",
-    primary=ContactMatch(mode="body", pattern="base_link", entity="robot"),
-    secondary=ContactMatch(mode="body", pattern="terrain"),
-    fields=("found", "force"),
-    reduce="none",
-    num_slots=1,
-    history_length=4,
-  )
-  cfg.scene.sensors = tuple(cfg.scene.sensors or ()) + (trunk_head_ground_cfg,)
-  
-  for key in ("self_collisions", "trunk_head_collision", "air_time"):
-    cfg.rewards.pop(key, None)
-  
-
-  # 1. 碰撞与步态约束（同步平地有效参数）
-  cfg.rewards["shank_collision"] = RewardTermCfg(
-    func=mdp.self_collision_cost,
-    weight=-0.1,
-    params={"sensor_name": "shank_ground_touch"},
-  )
-  
-  # 2. 终止条件：与 Stair 对齐，只保留大腿触地和躯干/头部碰撞。
-  cfg.terminations["illegal_contact"] = TerminationTermCfg(
-    func=mdp.illegal_contact,
-    params={"sensor_name": "thigh_ground_touch"},
-  )
-  cfg.terminations["trunk_head_collision"] = TerminationTermCfg(
-    func=mdp.illegal_contact,
-    params={"sensor_name": "trunk_head_ground_touch"},
-  )
-  
-  # 边界检测使用 out_of_patch_bounds：
-  # 机器人离开自己的 8×8 patch 即终止（time_out）。
-  # Platform 的目标最远约 7.34m，因此 X 方向保留 8.0m 边界；
-  # 其余参数与 Stair 对齐。
-  cfg.terminations.pop("reached_edge", None)
-  cfg.terminations.pop("fell_over", None)
-  cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
-    func=out_of_patch_bounds,
-    time_out=True,
-    params={"half_size_x": 8.0, "half_size_y": 4.0, "margin": 0.2},
+  _apply_platform_like_config(
+    cfg,
+    out_of_patch_params={"half_size_x": 8.0, "half_size_y": 4.0, "margin": 0.2},
   )
   cfg.events = {
       "reset_base": EventTermCfg(
@@ -701,15 +718,6 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       ),
     }
 
-  # 与 Stair 对齐：15s episode，奖励时间窗按 15/6 = 2.5 倍拉长。
-  cfg.rewards["track_target_bias"].params["goal_deadzone"] = 0.0
-  cfg.episode_length_s = 15.0
-  cfg.rewards["track_target_position"].weight = 2.0  # (1 / t_r) * 10, t_r = 5
-  cfg.rewards["track_target_position"].params["t_r"] = 5.0
-  cfg.rewards["track_target_bias"].params["t_r"] = 10.0
-  cfg.rewards["standstill"].params["t_r"] = 5.0
-  cfg.rewards["stand_pose"].params["t_r"] = 5.0
-
   # Platform 课程划分为 level 0~12 共 13 个难度点。
   # 到 level 12 后不再继续加难，reset 时在 0~12 之间随机。
   if "terrain_levels" in cfg.curriculum:
@@ -725,6 +733,80 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   return cfg
 
 
+def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """Track task on the plum blossom field terrain.
 
+  - 从 ``my_go2_rough_env_cfg`` 继承；
+  - 奖励、终止、episode、传感器使用 Platform 的基本配置；
+  - 地形使用 15m 梅花桩区域 + 2m 外侧平地；
+  - 出生在中心平台，目标在 +X 方向外侧平地的中心。
+  """
+  cfg = my_go2_rough_env_cfg(play=play)
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
 
+  # 梅花桩地形有很多小桩，接触数量比普通地形大。
+  cfg.sim.njmax = 300
+  cfg.sim.contact_sensor_maxmatch = 64
+  cfg.sim.nconmax = None
 
+  cfg.scene.terrain = TerrainEntityCfg(
+    terrain_type="generator",
+    terrain_generator=replace(PLUM_BLOSSOM_FIELD_TERRAINS_CFG),
+    max_init_terrain_level=0,
+  )
+
+  plum_sub = next(
+    iter(cfg.scene.terrain.terrain_generator.sub_terrains.values())
+  )
+  # 中心平台 -> 外侧平地中心的距离。
+  goal_distance = (
+    float(plum_sub.field_size[0]) / 2.0
+    + float(plum_sub.flat_border_width) / 2.0
+  )
+  cfg.commands["Goal_direction"].cardinal_directions = ("E",)
+  cfg.commands["Goal_direction"].target_distance = goal_distance
+
+  _apply_platform_like_config(
+    cfg,
+    out_of_patch_params={
+      "half_size": float(PLUM_BLOSSOM_FIELD_TERRAINS_CFG.size[0]) / 2.0,
+      "margin": 0.2,
+    },
+  )
+
+  cfg.events = {
+    "reset_base": EventTermCfg(
+      func=reset_root_state_from_stair,
+      mode="reset",
+      params={
+        "pose_range": {
+          "x": (-0.1, 0.1),
+          "y": (-0.1, 0.1),
+          "z": (0.0, 0.0),
+          "yaw": (-0.1, 0.1),
+        },
+        "velocity_range": {},
+        "nominal_height": 0.28,
+      },
+    ),
+    "reset_robot_joints": EventTermCfg(
+      func=mdp.reset_joints_by_offset,
+      mode="reset",
+      params={
+        "position_range": (0.0, 0.0),
+        "velocity_range": (0.0, 0.0),
+        "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+      },
+    ),
+  }
+
+  # 梅花桩地形共 16 个难度（0~15）。
+  if "terrain_levels" in cfg.curriculum:
+    cfg.curriculum["terrain_levels"].params["max_level"] = 15
+    cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
+
+  if play:
+    cfg.scene.num_envs = 1
+    cfg.scene.terrain.max_init_terrain_level = 15
+
+  return cfg

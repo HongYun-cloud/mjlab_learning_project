@@ -169,20 +169,29 @@ class GoalDirectionCommand(CommandTerm):
                 print(f"[Env {idx} RESET #{self.reset_count[idx]}] 原因: {reason_str} | 步数: {ep_step}")
 
     def _resample_command(self, env_ids: torch.Tensor) -> None:
-        """重置时在四向台阶边缘采样目标点。"""
+        """重置时生成目标点。
+
+        优先使用外部写入的 ``target_positions``（例如梅花桩的
+        外侧平地区域随机采样）；否则再使用 ``target_distances``
+        和四向单位向量。
+        """
         if len(env_ids) == 0:
             return
-        num_resets = len(env_ids)
-        k = len(self._candidate_offsets)
-        choice_idx = torch.randint(0, k, (num_resets,), device=self.device)
-        chosen_offsets = self._candidate_offsets[choice_idx]  # (num_resets, 2)
 
-        # 目标点 xy 坐标 = 候选单位向量 * 目标距离
-        if hasattr(self, "target_distances"):
-            dist = self.target_distances[env_ids].unsqueeze(-1)
-            self.target_pos[env_ids] = chosen_offsets * dist
+        if hasattr(self, "target_positions"):
+            self.target_pos[env_ids] = self.target_positions[env_ids]
         else:
-            self.target_pos[env_ids] = chosen_offsets * self.cfg.target_distance
+            num_resets = len(env_ids)
+            k = len(self._candidate_offsets)
+            choice_idx = torch.randint(0, k, (num_resets,), device=self.device)
+            chosen_offsets = self._candidate_offsets[choice_idx]  # (num_resets, 2)
+
+            # 目标点 xy 坐标 = 候选单位向量 * 目标距离
+            if hasattr(self, "target_distances"):
+                dist = self.target_distances[env_ids].unsqueeze(-1)
+                self.target_pos[env_ids] = chosen_offsets * dist
+            else:
+                self.target_pos[env_ids] = chosen_offsets * self.cfg.target_distance
 
         # 立即更新一次方向指令
         self._update_command(env_ids)

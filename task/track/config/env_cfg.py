@@ -38,6 +38,7 @@ from myrobot_mjlab.config.terrain.plum_blossom_field_terrain import (
 from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_reach_target
 from myrobot_mjlab.config.event.stair_reset import reset_root_state_from_stair,out_of_patch_bounds
 from myrobot_mjlab.config.event.tire_reset import reset_root_state_from_tire
+from myrobot_mjlab.config.event.plum_reset import randomize_plum_target
 from myrobot_mjlab.config.reward.stair_reward import track_linear_velocity_stair
 from myrobot_mjlab.config.command.AllTrackingCommand import (
   GoalDirectionCommandCfg,
@@ -787,6 +788,15 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         },
         "velocity_range": {},
         "nominal_height": 0.28,
+      },
+    ),
+    "randomize_goal": EventTermCfg(
+      func=randomize_plum_target,
+      mode="reset",
+      params={
+        "command_name": "Goal_direction",
+        "inner_margin": 0.3,
+        "inner_band": 0.7,
       },
     ),
     "reset_robot_joints": EventTermCfg(

@@ -26,13 +26,13 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
     """中心平台 + 周围梅花桩地形。
 
     设计尺寸（全部使用米）：
-    - 地形 patch：15m × 15m
-    - 中心平台：7m × 7m × 10m
-    - 难度 0：8 根 4m × 4m × 10m 大桩，围在中心平台四周
-    - 难度 1~15：中心平台保持 7m × 7m（0~10），
-      11~15 逐渐缩小到 0.8m × 0.8m；
-      周围改为 0.362m × 0.362m × 10m 小桩，
-      桩间距按难度随机排列，最大不超过 0.3m。
+    - 梅花桩区域：15m × 15m，外侧再加 2m 平地
+    - 中心平台：3m × 3m，厚度 0.2m
+    - 难度 0~10：桩尺寸从 2.0m 逐渐减到 0.2m，
+      桩间距从 0.05m 逐渐增大到 0.3m；
+    - 难度 11~13：桩保持 0.2m / 0.3m，
+      中心平台从 3.0m 逐渐缩小到 0.8m。
+    - 梅花桩区域中间不再铺基准地面，只有平台、桩和外侧平地是实体薄片。
     """
 
     # --- 地形范围 ---
@@ -47,63 +47,77 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
 
     # --- 中心平台 ---
     platform_size_schedule: tuple[float, ...] = (
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        7.00,
-        5.76,
-        4.52,
-        3.28,
-        2.04,
-        0.80,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        3.0000,
+        2.2667,
+        1.5333,
+        0.8000,
     )
-    """按难度索引的中心平台边长。"""
+    """按难度索引的中心平台边长（14 级：0~13）。"""
 
-    platform_height: float = 10.0
-    """中心平台高度（米）。"""
+    platform_height: float = 0.2
+    """中心平台厚度（米）。地形为薄片悬空结构，不是 10m 高台。"""
 
     platform_color: tuple[float, float, float, float] = (0.28, 0.52, 0.72, 1.0)
     """中心平台颜色。"""
 
     # --- 梅花桩 ---
     pillar_size_schedule: tuple[float, ...] = (
-        4.000,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
-        0.362,
+        2.000,
+        1.820,
+        1.640,
+        1.460,
+        1.280,
+        1.100,
+        0.920,
+        0.740,
+        0.560,
+        0.380,
+        0.200,
+        0.200,
+        0.200,
+        0.200,
     )
-    """按难度索引的单根桩边长。"""
+    """按难度索引的单根桩边长（14 级：0~13，2.0 -> 0.2）。"""
 
-    pillar_height: float = 10.0
-    """桩高度（米）。"""
+    pillar_height: float = 0.2
+    """桩厚度（米）。地形为薄片悬空结构，不是 10m 高柱。"""
 
-    num_large_pillars: int = 8
-    """难度 0 时的大桩数量。"""
+    num_large_pillars: int = 0
+    """兼容旧配置的 8 根大桩分支；0 表示关闭，level 0 使用普通桩场。"""
 
     pillar_gap_max: float = 0.30
     """小桩之间允许的最大间距（米）。"""
 
     pillar_gap_min_level1: float = 0.05
     """难度 1 时的小桩最大间距（米）。"""
+
+    pillar_gap_schedule: tuple[float, ...] | None = (
+        0.050,
+        0.075,
+        0.100,
+        0.125,
+        0.150,
+        0.175,
+        0.200,
+        0.225,
+        0.250,
+        0.275,
+        0.300,  # level 10 达到最大间距
+        0.300,  # level 11 开始缩小中心平台
+        0.300,
+        0.300,
+    )
+    """按难度索引的小桩最大间距（米）。设置后优先于线性插值。"""
 
     pillar_jitter: float = 0.02
     """小桩位置随机抖动量（米）。"""
@@ -116,12 +130,6 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
 
     pillar_right_color: tuple[float, float, float, float] = (0.90, 0.60, 0.25, 1.0)
     """交替桩颜色 B。"""
-
-    floor_thickness: float = 0.20
-    """基准地面厚度（米）。"""
-
-    floor_color: tuple[float, float, float, float] = (0.32, 0.35, 0.38, 1.0)
-    """基准地面颜色。"""
 
     friction: tuple[float, float, float] = (1.0, 0.005, 0.0001)
     """接触摩擦参数。"""
@@ -191,15 +199,8 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
         cx = patch_half_x + self.center_offset[0]
         cy = patch_half_y + self.center_offset[1]
 
-        # 0. 基准地面
-        self._add_box(
-            geometries,
-            body,
-            name="floor",
-            size=(patch_half_x, patch_half_y, self.floor_thickness / 2.0),
-            pos=(cx, cy, -self.floor_thickness / 2.0),
-            color=self.floor_color,
-        )
+        # 不再创建整块基准地面：梅花桩区域中间是空的，
+        # 只有中心平台、梅花桩和外侧平地是实体薄片。
 
         # 1. 中心平台
         platform_half = platform_size / 2.0
@@ -258,8 +259,8 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
                 )
 
         # 2. 梅花桩
-        if level == 0:
-            # 难度 0：8 根 4m × 4m × 10m 大桩
+        if level == 0 and self.num_large_pillars > 0:
+            # 兼容旧配置：8 根大桩分支；当前默认关闭。
             large_half = pillar_size / 2.0
             for idx, (dx, dy) in enumerate(self._large_pillar_positions()):
                 self._add_box(
@@ -279,10 +280,16 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
                     ),
                 )
         else:
-            # 难度 1~15：0.362m 小桩，间距随难度增大，最大 0.3m。
-            gap_max = self.pillar_gap_min_level1 + (
-                self.pillar_gap_max - self.pillar_gap_min_level1
-            ) * (level - 1) / 14.0
+            # 难度 1~17：0.362m 小桩，间距随难度增大，最大 0.3m。
+            if (
+                self.pillar_gap_schedule is not None
+                and level < len(self.pillar_gap_schedule)
+            ):
+                gap_max = float(self.pillar_gap_schedule[level])
+            else:
+                gap_max = self.pillar_gap_min_level1 + (
+                    self.pillar_gap_max - self.pillar_gap_min_level1
+                ) * (level - 1) / 14.0
             gap_max = float(np.clip(gap_max, 0.0, self.pillar_gap_max))
 
             # 保证 base_gap + 2 * jitter <= gap_max，避免随机抖动后超过上限。
@@ -379,7 +386,7 @@ PLUM_BLOSSOM_FIELD_TERRAINS_CFG = TerrainGeneratorCfg(
     # 15m 梅花桩区域 + 四周各 2m 平地
     size=(19.0, 19.0),
     border_width=20.0,
-    num_rows=16,
+    num_rows=14,
     num_cols=1,
     curriculum=True,
     sub_terrains={

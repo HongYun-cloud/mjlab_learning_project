@@ -748,7 +748,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # 梅花桩地形有很多小桩，接触数量比普通地形大。
   cfg.sim.njmax = 300
   cfg.sim.contact_sensor_maxmatch = 64
-  cfg.sim.nconmax = None
+  cfg.sim.nconmax = 128
 
   cfg.scene.terrain = TerrainEntityCfg(
     terrain_type="generator",
@@ -810,13 +810,13 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
   }
 
-  # 梅花桩地形共 16 个难度（0~15）。
+  # 梅花桩地形共 14 个难度（0~13）。
   if "terrain_levels" in cfg.curriculum:
-    cfg.curriculum["terrain_levels"].params["max_level"] = 15
+    cfg.curriculum["terrain_levels"].params["max_level"] = 13
     cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
 
   if play:
     cfg.scene.num_envs = 1
-    cfg.scene.terrain.max_init_terrain_level = 15
+    cfg.scene.terrain.max_init_terrain_level = 13
 
   return cfg

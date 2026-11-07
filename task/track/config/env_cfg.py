@@ -810,13 +810,13 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     ),
   }
 
-  # 梅花桩地形共 14 个难度（0~13）。
+  # 梅花桩地形共 13 个难度（0~12）。
   if "terrain_levels" in cfg.curriculum:
-    cfg.curriculum["terrain_levels"].params["max_level"] = 13
+    cfg.curriculum["terrain_levels"].params["max_level"] = 12
     cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
 
   if play:
     cfg.scene.num_envs = 1
-    cfg.scene.terrain.max_init_terrain_level = 13
+    cfg.scene.terrain.max_init_terrain_level = 12
 
   return cfg

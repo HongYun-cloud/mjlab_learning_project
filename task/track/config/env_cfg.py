@@ -743,7 +743,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   - 出生在中心平台，目标在 +X 方向外侧平地的中心。
   """
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "single beam"
 
   # 梅花桩地形有很多小桩，接触数量比普通地形大。
   cfg.sim.njmax = 300
@@ -756,6 +756,21 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     max_init_terrain_level=0,
   )
 
+  # 1. 碰撞与步态约束（同步平地有效参数）
+  cfg.rewards["shank_collision"] = RewardTermCfg(
+    func=mdp.self_collision_cost,
+    weight=-0.1,
+    params={"sensor_name": "shank_ground_touch"},
+  )
+  # 2. 终止条件：大腿触地 illegal_contact，以及摔倒翻车限制 fell_over (70度)
+  cfg.terminations["illegal_contact"] = TerminationTermCfg(
+    func=mdp.illegal_contact,
+    params={"sensor_name": "thigh_ground_touch"},
+  )
+  cfg.terminations["trunk_head_collision"] = TerminationTermCfg(
+    func=mdp.illegal_contact,
+    params={"sensor_name": "trunk_head_ground_touch"},
+  )
   plum_sub = next(
     iter(cfg.scene.terrain.terrain_generator.sub_terrains.values())
   )
@@ -774,6 +789,10 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       "margin": 0.2,
     },
   )
+
+  # 奖励权重与 Stair 对齐（Platform 的 helper 里是 -4.0 / -1e-4）。
+  cfg.rewards["aggressive_motion"].weight = -5.0
+  cfg.rewards["torque_penalty"].weight = -1.0e-3
 
   cfg.events = {
     "reset_base": EventTermCfg(

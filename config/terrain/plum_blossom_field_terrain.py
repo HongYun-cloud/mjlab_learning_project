@@ -26,17 +26,17 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
     """中心平台 + 周围梅花桩地形。
 
     设计尺寸（全部使用米）：
-    - 地形区：7.08m × 7.08m，外侧再加 2m 平地
+    - 地形区：6.52m × 6.52m，外侧再加 2m 平地
     - 中心平台：2m × 2m，厚度 0.2m
-    - 难度 0：严格 7×7 = 49 根桩，桩间距和到外侧平台的距离都是 0.08m
-    - 难度 1~9：桩尺寸 0.92m -> 0.20m，间距 0.08m -> 0.26m
+    - 难度 0：严格 7×7 = 49 根桩，桩间距和到外侧平台的距离都是 0.01m
+    - 难度 1~9：桩尺寸 0.92m -> 0.20m，间距 0.01m -> 0.26m
     - 难度 10~12：保持 0.20m / 0.26m，中心平台 2.0m -> 0.8m
     - 地形区中间不再铺基准地面，只有平台、桩和外侧平地是实体薄片。
     """
 
     # --- 地形范围 ---
-    field_size: tuple[float, float] = (7.08, 7.08)
-    """地形区尺寸（米）：7*0.92m 桩 + 6*0.08m 桩间 gap + 2*0.08m 外侧 gap。"""
+    field_size: tuple[float, float] = (6.52, 6.52)
+    """地形区尺寸（米）：7*0.92m 桩 + 6*0.01m 桩间 gap + 2*0.01m 外侧 gap。"""
 
     flat_border_width: float = 2.0
     """地形区外侧的平地宽度（米）。总 patch 尺寸会增加 2 倍该值。"""
@@ -96,7 +96,7 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
     """难度 1 时的小桩最大间距（米）。"""
 
     pillar_gap_schedule: tuple[float, ...] | None = (
-        0.08,
+        0.01,
         0.10,
         0.12,
         0.14,
@@ -303,8 +303,8 @@ def plum_blossom_field_terrain(
 
 # 13 个难度：0~12
 PLUM_BLOSSOM_FIELD_TERRAINS_CFG = TerrainGeneratorCfg(
-    # 7.08m 地形区 + 四周各 2m 平地
-    size=(11.08, 11.08),
+    # 6.52m 地形区 + 四周各 2m 平地
+    size=(10.52, 10.52),
     border_width=20.0,
     num_rows=13,
     num_cols=1,
@@ -312,7 +312,7 @@ PLUM_BLOSSOM_FIELD_TERRAINS_CFG = TerrainGeneratorCfg(
     sub_terrains={
         "plum_blossom_field": plum_blossom_field_terrain(
             proportion=1.0,
-            field_size=(7.08, 7.08),
+            field_size=(6.52, 6.52),
             flat_border_width=2.0,
         ),
     },

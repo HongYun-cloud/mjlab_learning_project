@@ -791,15 +791,11 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     },
   )
 
-  # 奖励权重与 Stair 对齐（Platform 的 helper 里是 -4.0 / -1e-4）。
-  cfg.rewards["aggressive_motion"].weight = -5.0
-  cfg.rewards["torque_penalty"].weight = -1.0e-3
-
-  # 前期强前进奖励：只要朝目标方向移动，每步给固定 1.0。
-  # 权重 1.5 < track_target_position 的 2.0，不会在终点附近压过位置奖励。
+  # Plum 专项：终止惩罚和前期前进引导。
+  cfg.rewards["termination_penalty"].weight = -50
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,
-    weight=1.5,
+    weight=10,
     params={
       "command_name": "Goal_direction",
       "min_forward_speed": 0.05,
@@ -846,15 +842,15 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     cfg.curriculum["terrain_levels"].params["max_level"] = 12
     cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
 
-  # 前进奖励从 1.5 线性退火到 1e-3，覆盖前 1000 个 iteration。
-  # 1000 iter × 24 steps = 24000 control steps。
+  # 前进奖励从 10.0 线性退火到 1e-3，覆盖前 2000 个 iteration。
+  # 2000 iter × 24 steps = 48000 control steps。
   if not play:
     cfg.curriculum["goal_forward_anneal"] = CurriculumTermCfg(
       func=anneal_reward_weight,
       params={
         "reward_name": "goal_forward_bonus",
-        "total_steps": 1000 * 24,
-        "schedule": ((0.0, 1.5), (1.0, 1.0e-3)),
+        "total_steps": 2000 * 24,
+        "schedule": ((0.0, 10.0), (1.0, 1.0e-3)),
       },
     )
 

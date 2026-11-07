@@ -231,83 +231,34 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
 
         half_pillar = pillar_size / 2.0
 
-        if level == 0:
-            # 难度 0：严格 7×7 = 49 根。
-            # 桩间距 = gap，最外圈桩到外侧平台的间距也 = gap。
-            # L = 7*size + 6*gap + 2*gap = 7.08m。
-            pitch = pillar_size + gap
-            n = 7
-            start = -(n - 1) * pitch / 2.0
-            for iy in range(n):
-                y = start + iy * pitch
-                for ix in range(n):
-                    x = start + ix * pitch
-                    self._add_box(
-                        geometries,
-                        body,
-                        name=f"pillar_{iy}_{ix}",
-                        size=(
-                            half_pillar,
-                            half_pillar,
-                            self.pillar_height / 2.0,
-                        ),
-                        pos=(cx + x, cy + y, self.pillar_height / 2.0),
-                        color=(
-                            self.pillar_left_color
-                            if (ix + iy) % 2 == 0
-                            else self.pillar_right_color
-                        ),
-                    )
-        else:
-            # 难度 1~12：在固定地形区内按当前 size/gap 随机生成。
-            jitter = min(self.pillar_jitter, gap / 4.0)
-            pitch = pillar_size + gap + 2.0 * jitter
-            row_pitch = pitch * np.sqrt(3.0) / 2.0
+        # 所有难度使用同一规则：按 size/gap 用正方形网格尽量填满地形区。
+        # 网格覆盖整个地形区，允许与中心平台重叠；平台最后添加并叠在上面。
+        pitch = pillar_size + gap
+        num = int(np.floor((2.0 * field_half_x + gap) / pitch))
+        num = max(1, num)
+        span = num * pillar_size + (num - 1) * gap
+        start = -span / 2.0 + half_pillar
 
-            platform_clear = platform_half + half_pillar + gap
-            # 给最外圈桩到外侧平台留 gap。
-            x_limit = field_half_x - gap - half_pillar
-            y_limit = field_half_y - gap - half_pillar
-
-            nx_half = int(np.floor(x_limit / pitch))
-            ny_half = int(np.floor(y_limit / row_pitch))
-
-            for iy in range(-ny_half, ny_half + 1):
-                y = iy * row_pitch
-                row_offset = (pitch / 2.0) if (iy % 2 != 0) else 0.0
-                for ix in range(-nx_half, nx_half + 1):
-                    x = ix * pitch + row_offset
-                    if abs(x) > x_limit:
-                        continue
-
-                    xj = x + float(rng.uniform(-jitter, jitter))
-                    yj = y + float(rng.uniform(-jitter, jitter))
-                    # 抖动后越界或进入平台净空时，退回未抖动位置。
-                    if (
-                        abs(xj) > x_limit
-                        or abs(yj) > y_limit
-                        or (abs(xj) < platform_clear and abs(yj) < platform_clear)
-                    ):
-                        xj, yj = x, y
-                    if abs(xj) < platform_clear and abs(yj) < platform_clear:
-                        continue
-
-                    self._add_box(
-                        geometries,
-                        body,
-                        name=f"pillar_{iy}_{ix}",
-                        size=(
-                            half_pillar,
-                            half_pillar,
-                            self.pillar_height / 2.0,
-                        ),
-                        pos=(cx + xj, cy + yj, self.pillar_height / 2.0),
-                        color=(
-                            self.pillar_left_color
-                            if (ix + iy) % 2 == 0
-                            else self.pillar_right_color
-                        ),
-                    )
+        for iy in range(num):
+            y = start + iy * pitch
+            for ix in range(num):
+                x = start + ix * pitch
+                self._add_box(
+                    geometries,
+                    body,
+                    name=f"pillar_{iy}_{ix}",
+                    size=(
+                        half_pillar,
+                        half_pillar,
+                        self.pillar_height / 2.0,
+                    ),
+                    pos=(cx + x, cy + y, self.pillar_height / 2.0),
+                    color=(
+                        self.pillar_left_color
+                        if (ix + iy) % 2 == 0
+                        else self.pillar_right_color
+                    ),
+                )
 
         # 2.1 中心平台最后添加，叠在桩上面。
         self._add_box(

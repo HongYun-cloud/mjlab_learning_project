@@ -744,7 +744,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   - 出生在中心平台，目标在 +X 方向外侧平地的中心。
   """
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "single beam"
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
 
   # 梅花桩地形有很多小桩，接触数量比普通地形大。
   cfg.sim.njmax = 300
@@ -792,10 +792,10 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
 
   # Plum 专项：终止惩罚和前期前进引导。
-  cfg.rewards["termination_penalty"].weight = -50
+  cfg.rewards["termination_penalty"].weight = 0.0
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,
-    weight=10,
+    weight=1.5,
     params={
       "command_name": "Goal_direction",
       "min_forward_speed": 0.05,
@@ -842,15 +842,15 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     cfg.curriculum["terrain_levels"].params["max_level"] = 12
     cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
 
-  # 前进奖励从 10.0 线性退火到 1e-3，覆盖前 2000 个 iteration。
-  # 2000 iter × 24 steps = 48000 control steps。
+  # 前进奖励从 1.5 线性退火到 1e-3，覆盖前 1000 个 iteration。
+  # 1000 iter × 24 steps = 24000 control steps。
   if not play:
     cfg.curriculum["goal_forward_anneal"] = CurriculumTermCfg(
       func=anneal_reward_weight,
       params={
         "reward_name": "goal_forward_bonus",
-        "total_steps": 2000 * 24,
-        "schedule": ((0.0, 10.0), (1.0, 1.0e-3)),
+        "total_steps": 1000 * 24,
+        "schedule": ((0.0, 1.5), (1.0, 1.0e-3)),
       },
     )
 

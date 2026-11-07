@@ -36,4 +36,10 @@ class TrackOnPolicyRunner(VelocityOnPolicyRunner):
                     "iteration": True,
                     "rnd": False,
                 }
-        return super().load(path, load_cfg, strict, map_location)
+        infos = super().load(path, load_cfg, strict, map_location)
+        # Make step-based annealing start from this run, not the absolute
+        # step count stored in the resumed checkpoint.
+        self.env.unwrapped._anneal_start_step = (
+            self.env.unwrapped.common_step_counter
+        )
+        return infos

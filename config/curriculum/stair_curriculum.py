@@ -417,6 +417,10 @@ def anneal_reward_weight(
     episode reset 时更新 ``env.reward_manager`` 中对应 term 的 weight.
     ``total_steps`` 是退火结束的步数: 1000 iter × 24 steps = 24000.
 
+    Resume 时 runner 会把 ``env._anneal_start_step`` 设为加载 checkpoint
+    的 ``common_step_counter``，因此退火从本次 run 的起点重新计算，而不是
+    使用包含旧训练历史的绝对步数。
+
     典型用法是让 ``foot_swing_height`` 从 -2.0 逐步降到 0:
     前期提供抬脚高度引导, 后期完全交给 RL 自己优化.
     """
@@ -425,8 +429,10 @@ def anneal_reward_weight(
     if not schedule:
         raise ValueError("schedule 不能为空")
 
+    start_step = int(getattr(env, "_anneal_start_step", 0))
+    elapsed_steps = float(env.common_step_counter) - float(start_step)
     progress = min(
-        max(float(env.common_step_counter) / float(total_steps), 0.0), 1.0
+        max(elapsed_steps / float(total_steps), 0.0), 1.0
     )
     stages = sorted((float(p), float(w)) for p, w in schedule)
     if progress <= stages[0][0]:

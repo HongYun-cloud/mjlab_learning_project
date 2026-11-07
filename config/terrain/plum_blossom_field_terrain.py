@@ -303,26 +303,19 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
             row_pitch = pitch * np.sqrt(3.0) / 2.0
 
             half_pillar = pillar_size / 2.0
-            start_x = -field_half_x + half_pillar
-            end_x = field_half_x - half_pillar
-            start_y = -field_half_y + half_pillar
-            end_y = field_half_y - half_pillar
-
-            nx = int(np.floor((end_x - start_x) / pitch)) + 1
-            ny = int(np.floor((end_y - start_y) / row_pitch)) + 1
-
             platform_clear = platform_half + half_pillar + self.platform_to_pillar_gap
 
-            for iy in range(ny):
-                y = start_y + iy * row_pitch
-                # 奇数行交错半个 pitch
-                row_offset = (pitch / 2.0) if (iy % 2 == 1) else 0.0
-                for ix in range(nx):
-                    x = start_x + ix * pitch + row_offset
-                    if (
-                        x < -field_half_x + half_pillar
-                        or x > field_half_x - half_pillar
-                    ):
+            # 以中心平台为原点，向四周交错扩展。
+            # 奇数行偏移半个 pitch，形成从平台向外发散的梅花交错图案。
+            nx_half = int(np.ceil((field_half_x - half_pillar) / pitch))
+            ny_half = int(np.ceil((field_half_y - half_pillar) / row_pitch))
+
+            for iy in range(-ny_half, ny_half + 1):
+                y = iy * row_pitch
+                row_offset = (pitch / 2.0) if (iy % 2 != 0) else 0.0
+                for ix in range(-nx_half, nx_half + 1):
+                    x = ix * pitch + row_offset
+                    if abs(x) > field_half_x - half_pillar:
                         continue
 
                     xj = x + float(rng.uniform(-jitter, jitter))

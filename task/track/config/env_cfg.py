@@ -35,10 +35,11 @@ from myrobot_mjlab.config.terrain.step_platform_terrain import STEP_PLATFORM_TER
 from myrobot_mjlab.config.terrain.plum_blossom_field_terrain import (
     PLUM_BLOSSOM_FIELD_TERRAINS_CFG,
 )
-from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_reach_target
+from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_reach_target, anneal_reward_weight
 from myrobot_mjlab.config.event.stair_reset import reset_root_state_from_stair,out_of_patch_bounds
 from myrobot_mjlab.config.event.tire_reset import reset_root_state_from_tire
 from myrobot_mjlab.config.event.plum_reset import randomize_plum_target
+from myrobot_mjlab.config.reward.Trackingreward import goal_forward_bonus
 from myrobot_mjlab.config.reward.stair_reward import track_linear_velocity_stair
 from myrobot_mjlab.config.command.AllTrackingCommand import (
   GoalDirectionCommandCfg,
@@ -794,6 +795,17 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["aggressive_motion"].weight = -5.0
   cfg.rewards["torque_penalty"].weight = -1.0e-3
 
+  # 前期强前进奖励：只要朝目标方向移动，每步给固定 1.0。
+  # 权重 1.5 < track_target_position 的 2.0，不会在终点附近压过位置奖励。
+  cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
+    func=goal_forward_bonus,
+    weight=1.5,
+    params={
+      "command_name": "Goal_direction",
+      "min_forward_speed": 0.05,
+    },
+  )
+
   cfg.events = {
     "reset_base": EventTermCfg(
       func=reset_root_state_from_stair,
@@ -833,6 +845,18 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   if "terrain_levels" in cfg.curriculum:
     cfg.curriculum["terrain_levels"].params["max_level"] = 12
     cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
+
+  # 前进奖励从 1.5 线性退火到 1e-3，覆盖前 1000 个 iteration。
+  # 1000 iter × 24 steps = 24000 control steps。
+  if not play:
+    cfg.curriculum["goal_forward_anneal"] = CurriculumTermCfg(
+      func=anneal_reward_weight,
+      params={
+        "reward_name": "goal_forward_bonus",
+        "total_steps": 1000 * 24,
+        "schedule": ((0.0, 1.5), (1.0, 1.0e-3)),
+      },
+    )
 
   if play:
     cfg.scene.num_envs = 1

@@ -453,6 +453,31 @@ def collision_penalty(
     return hit.float()
 
 
+def goal_forward_bonus(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    min_forward_speed: float = 0.05,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    """Fixed bonus while the base is moving toward the goal.
+
+    Formula:
+        1.0 if v_xy · direction_to_goal > min_forward_speed else 0.0
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
+
+    to_goal = goal_pos[:, :2] - robot_pos[:, :2]
+    dist = torch.linalg.norm(to_goal, dim=-1).clamp(min=1e-6)
+    direction = to_goal / dist.unsqueeze(-1)
+
+    vel = asset.data.root_link_lin_vel_w[:, :2]
+    forward_speed = torch.sum(vel * direction, dim=-1)
+    return (forward_speed > min_forward_speed).float()
+
+
 def move_in_direction(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",

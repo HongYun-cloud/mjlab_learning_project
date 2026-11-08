@@ -32,13 +32,18 @@ from mjlab.terrains import TerrainEntityCfg
 from myrobot_mjlab.config.terrain.stair_terrain import STAIRS_TERRAINS_CFG
 from myrobot_mjlab.config.terrain.tire_array import TIRE_ARRAY_TERRAINS_CFG
 from myrobot_mjlab.config.terrain.step_platform_terrain import STEP_PLATFORM_TERRAINS_CFG
+from myrobot_mjlab.config.terrain.stones_2rows_terrain import STONES_2ROWS_TERRAINS_CFG
 from myrobot_mjlab.config.terrain.plum_blossom_field_terrain import (
     PLUM_BLOSSOM_FIELD_TERRAINS_CFG,
+)
+from myrobot_mjlab.config.terrain.stones_2rows_terrain import (
+    STONES_2ROWS_TERRAINS_CFG,
 )
 from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_reach_target, anneal_reward_weight
 from myrobot_mjlab.config.event.stair_reset import reset_root_state_from_stair,out_of_patch_bounds
 from myrobot_mjlab.config.event.tire_reset import reset_root_state_from_tire
 from myrobot_mjlab.config.event.plum_reset import randomize_plum_target
+from myrobot_mjlab.config.event.stones_reset import randomize_stones_target
 from myrobot_mjlab.config.reward.Trackingreward import goal_forward_bonus
 from myrobot_mjlab.config.reward.stair_reward import track_linear_velocity_stair
 from myrobot_mjlab.config.command.AllTrackingCommand import (
@@ -744,7 +749,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   - 出生在中心平台，目标在 +X 方向外侧平地的中心。
   """
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "single beam"
 
   # 梅花桩地形有很多小桩，接触数量比普通地形大。
   cfg.sim.njmax = 300
@@ -793,6 +798,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   # Plum 专项：终止惩罚和前期前进引导。
   cfg.rewards["termination_penalty"].weight = 0.0
+  cfg.rewards["track_target_position"].dense = True
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,
     weight=1.5,
@@ -844,6 +850,111 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   # 前进奖励从 1.5 线性退火到 1e-3，覆盖前 1000 个 iteration。
   # 1000 iter × 24 steps = 24000 control steps。
+  if not play:
+    cfg.curriculum["goal_forward_anneal"] = CurriculumTermCfg(
+      func=anneal_reward_weight,
+      params={
+        "reward_name": "goal_forward_bonus",
+        "total_steps": 1000 * 24,
+        "schedule": ((0.0, 1.5), (1.0, 1.0e-3)),
+      },
+    )
+
+  if play:
+    cfg.scene.num_envs = 1
+    cfg.scene.terrain.max_init_terrain_level = 12
+
+  return cfg
+
+def my_go2_stones_2rows_env_cfg(
+    play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Track task on the Stones-2Rows terrain.
+
+  - 中心平台 + 四个方向的双排交错梅花桩
+  - 目标点固定在 E/W/N/S 四个外侧平台中心，每次 reset 随机选一个
+  - 奖励/终止使用 Platform/Stair 的基本配置；前期保留前进奖励
+  """
+  cfg = my_go2_rough_env_cfg(play=play)
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
+
+  cfg.sim.njmax = 300
+  cfg.sim.contact_sensor_maxmatch = 64
+  cfg.sim.nconmax = 128
+
+  cfg.scene.terrain = TerrainEntityCfg(
+    terrain_type="generator",
+    terrain_generator=replace(STONES_2ROWS_TERRAINS_CFG),
+    max_init_terrain_level=0,
+  )
+
+  stones_sub = next(
+    iter(cfg.scene.terrain.terrain_generator.sub_terrains.values())
+  )
+  goal_distance = float(stones_sub._target_distance(0))
+  cfg.commands["Goal_direction"].cardinal_directions = ("E",)
+  cfg.commands["Goal_direction"].target_distance = goal_distance
+
+  _apply_platform_like_config(
+    cfg,
+    out_of_patch_params={
+      "half_size": float(STONES_2ROWS_TERRAINS_CFG.size[0]) / 2.0,
+      "margin": 0.2,
+    },
+  )
+
+  # 与 Stair/Plum 一致的动作约束权重。
+  cfg.rewards["aggressive_motion"].weight = -5.0
+  cfg.rewards["torque_penalty"].weight = -1.0e-3
+
+  # 全程位置奖励 + 前期前进奖励。
+  cfg.rewards["track_target_position"].params["dense"] = True
+  cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
+    func=goal_forward_bonus,
+    weight=1.5,
+    params={
+      "command_name": "Goal_direction",
+      "min_forward_speed": 0.05,
+    },
+  )
+  cfg.rewards["termination_penalty"].weight = -50.0
+
+  cfg.events = {
+    "reset_base": EventTermCfg(
+      func=reset_root_state_from_stair,
+      mode="reset",
+      params={
+        "pose_range": {
+          "x": (-0.1, 0.1),
+          "y": (-0.1, 0.1),
+          "z": (0.0, 0.0),
+          "yaw": (-3.14, 3.14),
+        },
+        "velocity_range": {},
+        "nominal_height": 0.28,
+      },
+    ),
+    "randomize_goal": EventTermCfg(
+      func=randomize_stones_target,
+      mode="reset",
+      params={"command_name": "Goal_direction"},
+    ),
+    "reset_robot_joints": EventTermCfg(
+      func=mdp.reset_joints_by_offset,
+      mode="reset",
+      params={
+        "position_range": (0.0, 0.0),
+        "velocity_range": (0.0, 0.0),
+        "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+      },
+    ),
+  }
+
+  # Stones-2Rows 共 13 个难度（0~12）。
+  if "terrain_levels" in cfg.curriculum:
+    cfg.curriculum["terrain_levels"].params["max_level"] = 12
+    cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
+
   if not play:
     cfg.curriculum["goal_forward_anneal"] = CurriculumTermCfg(
       func=anneal_reward_weight,

@@ -260,6 +260,54 @@ class PlumBlossomFieldTerrainCfg(SubTerrainCfg):
                     ),
                 )
 
+        # 2.0 最外圈与外侧平台的间距大于 gap 时，再补一圈桩。
+        # 这一圈允许压到外侧平台上，避免留下过大的空档。
+        edge_gap = field_half_x - span / 2.0
+        if edge_gap > gap + 1e-6:
+            ring_radius = span / 2.0 + gap + half_pillar
+            side_count = max(
+                2, int(np.floor(2.0 * ring_radius / pitch)) + 1
+            )
+            coords = np.linspace(-ring_radius, ring_radius, side_count)
+
+            for idx, x in enumerate(coords):
+                for y in (ring_radius, -ring_radius):
+                    self._add_box(
+                        geometries,
+                        body,
+                        name=f"ring_x_{idx}_{'top' if y > 0 else 'bottom'}",
+                        size=(
+                            half_pillar,
+                            half_pillar,
+                            self.pillar_height / 2.0,
+                        ),
+                        pos=(cx + x, cy + y, self.pillar_height / 2.0),
+                        color=(
+                            self.pillar_left_color
+                            if idx % 2 == 0
+                            else self.pillar_right_color
+                        ),
+                    )
+
+            for idx, y in enumerate(coords[1:-1], start=1):
+                for x in (ring_radius, -ring_radius):
+                    self._add_box(
+                        geometries,
+                        body,
+                        name=f"ring_y_{idx}_{'right' if x > 0 else 'left'}",
+                        size=(
+                            half_pillar,
+                            half_pillar,
+                            self.pillar_height / 2.0,
+                        ),
+                        pos=(cx + x, cy + y, self.pillar_height / 2.0),
+                        color=(
+                            self.pillar_left_color
+                            if idx % 2 == 0
+                            else self.pillar_right_color
+                        ),
+                    )
+
         # 2.1 中心平台最后添加，叠在桩上面。
         self._add_box(
             geometries,

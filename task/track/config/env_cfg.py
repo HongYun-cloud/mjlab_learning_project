@@ -48,7 +48,10 @@ from myrobot_mjlab.config.event.stones_reset import (
   base_below_height,
   randomize_stones_target,
 )
-from myrobot_mjlab.config.reward.Trackingreward import goal_forward_bonus
+from myrobot_mjlab.config.reward.Trackingreward import (
+  JointPowerBalancePenalty,
+  goal_forward_bonus,
+)
 from myrobot_mjlab.config.reward.stair_reward import track_linear_velocity_stair
 from myrobot_mjlab.config.command.AllTrackingCommand import (
   GoalDirectionCommandCfg,
@@ -677,6 +680,24 @@ def _apply_platform_like_config(
   cfg.rewards["aggressive_motion"].weight = -4.0
 
 
+def _add_joint_power_balance(
+  cfg: ManagerBasedRlEnvCfg, weight: float = -0.2
+) -> None:
+  """Add the 2s four-leg normalized joint-power variance penalty."""
+  cfg.rewards["joint_power_balance"] = RewardTermCfg(
+    func=JointPowerBalancePenalty,
+    weight=weight,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+      "window_s": 2.0,
+      "vel_norm": 30.0,
+      "torque_norm": 25.0,
+      "min_speed": 0.1,
+      "eps": 1e-8,
+    },
+  )
+
+
 def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
   cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
@@ -803,6 +824,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       "margin": 0.2,
     },
   )
+  _add_joint_power_balance(cfg)
 
   # 姿态惩罚全程生效，不再只在终点附近。
   cfg.rewards["normal_pose"].params["distance_threshold"] = None
@@ -914,6 +936,7 @@ def my_go2_stones_2rows_env_cfg(
       "margin": 0.2,
     },
   )
+  _add_joint_power_balance(cfg)
 
   # 掉出世界：机身世界 z < -3m 时终止（只用于 Stones-2Rows）。
   cfg.terminations["base_below_world"] = TerminationTermCfg(
@@ -937,7 +960,7 @@ def my_go2_stones_2rows_env_cfg(
       "min_forward_speed": 0.05,
     },
   )
-  cfg.rewards["termination_penalty"].weight = -100.0
+  cfg.rewards["termination_penalty"].weight = -200.0
 
   cfg.events = {
     "reset_base": EventTermCfg(

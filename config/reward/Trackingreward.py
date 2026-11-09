@@ -238,6 +238,106 @@ def joint_power_penalty(
     return torch.sum(torch.square(power), dim=-1)
 
 
+class JointPowerBalancePenalty:
+    """Penalize sustained imbalance of normalized joint power across four legs.
+
+    Formula:
+        p_i = (dot{q}_i / vel_norm) * (tau_i / torque_norm)
+        P_leg(t) = sum_{i in leg} p_i(t)^2
+        P_bar_leg = mean_t P_leg(t) over ``window_s``
+        raw = Var(P_bar_FL, P_bar_FR, P_bar_RL, P_bar_RR)
+        value = raw / (mean(P_bar_leg)^2 + eps)
+
+    The penalty is zero when the base horizontal speed is at or below
+    ``min_speed`` to avoid encouraging a stationary policy.
+    """
+
+    _LEG_PREFIXES = ("FL", "FR", "RL", "RR")
+
+    def __init__(self, cfg, env: ManagerBasedRlEnv):
+        self._env = env
+        self._window_s = float(cfg.params.get("window_s", 2.0))
+        self._window_steps = max(1, int(round(self._window_s / env.step_dt)))
+        self._buffer = torch.zeros(
+            (env.num_envs, self._window_steps, 4),
+            device=env.device,
+            dtype=torch.float32,
+        )
+        self._count = torch.zeros(
+            env.num_envs, device=env.device, dtype=torch.long
+        )
+        self._ptr = 0
+        self._leg_joint_ids: list[torch.Tensor] | None = None
+
+    def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        self._buffer[env_ids] = 0.0
+        self._count[env_ids] = 0
+
+    def _resolve_leg_joint_ids(self, asset: Entity) -> None:
+        if self._leg_joint_ids is not None:
+            return
+        names = list(asset.joint_names)
+        ids: list[torch.Tensor] = []
+        for prefix in self._LEG_PREFIXES:
+            leg_ids = [
+                i for i, name in enumerate(names) if name.startswith(prefix)
+            ]
+            if len(leg_ids) != 3:
+                raise ValueError(
+                    "JointPowerBalancePenalty expects 3 joints per leg, "
+                    f"got {len(leg_ids)} for {prefix}: {names}"
+                )
+            ids.append(
+                torch.tensor(
+                    leg_ids, device=self._buffer.device, dtype=torch.long
+                )
+            )
+        self._leg_joint_ids = ids
+
+    def __call__(
+        self,
+        env: ManagerBasedRlEnv,
+        asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+        vel_norm: float = 30.0,
+        torque_norm: float = 25.0,
+        min_speed: float = 0.1,
+        eps: float = 1e-8,
+        **kwargs,
+    ) -> torch.Tensor:
+        asset: Entity = env.scene[asset_cfg.name]
+        self._resolve_leg_joint_ids(asset)
+
+        qdot = asset.data.joint_vel
+        tau = asset.data.qfrc_actuator
+        power = (qdot / vel_norm) * (tau / torque_norm)
+        power_sq = torch.square(power)
+        per_leg = torch.stack(
+            [power_sq[:, ids].sum(dim=-1) for ids in self._leg_joint_ids],
+            dim=-1,
+        )
+
+        self._buffer[:, self._ptr, :] = per_leg
+        self._ptr = (self._ptr + 1) % self._window_steps
+        self._count += 1
+        self._count.clamp_(max=self._window_steps)
+
+        denom = self._count.clamp(min=1).to(per_leg.dtype).unsqueeze(-1)
+        mean_power = self._buffer.sum(dim=1) / denom
+        variance = mean_power.var(dim=1, unbiased=False)
+        normalized = variance / (
+            torch.square(mean_power.mean(dim=1)) + eps
+        )
+
+        speed = torch.linalg.norm(
+            asset.data.root_link_lin_vel_w[:, :2], dim=-1
+        )
+        return torch.where(
+            speed > min_speed, normalized, torch.zeros_like(normalized)
+        )
+
+
 class FootAccelPenalty:
     """Penalize the sum of per-foot linear acceleration magnitudes.
 

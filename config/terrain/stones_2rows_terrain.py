@@ -25,9 +25,13 @@ class Stones2RowsTerrainCfg(SubTerrainCfg):
     """Stones-2Rows：中心平台 + 四个方向的双排交错梅花桩。
 
     - 中心平台：1.5m（level 0~10），level 11/12 缩小到 1.15/0.8
-    - 每个方向 2 排 × 5 根 = 10 根桩，沿路径交错
-    - 第一根桩到平台边缘 gap，后续桩之间 gap
-    - 最后一根桩到外侧平台 gap
+    - 每个方向 2 排 × 5 根 = 10 根桩
+    - 桩尺寸固定 0.2m，只有 gap 随难度从 0.01 增到 0.2
+    - 第一排第一根桩到平台边缘 gap
+    - 第二排相对第一排的纵向错位 f：
+      level 0 时 f=0（两根桩并排，横向净距 gap），
+      level 9 时 f=L=gap+size（两排完全交错）
+    - 同一排相邻桩纵向间距 2L，最后一根桩到外侧平台 gap
     - 外侧平台尺寸与中心平台相同
     - 目标点固定在四个外侧平台中心，每次 reset 在 E/W/N/S 中随机选一个
     - 所有实体厚度 0.2m，其他区域为空域
@@ -52,21 +56,21 @@ class Stones2RowsTerrainCfg(SubTerrainCfg):
     """中心平台和外侧平台的边长（13 级：0~12）。"""
 
     pillar_size_schedule: tuple[float, ...] = (
-        1.000000,
-        0.911111,
-        0.822222,
-        0.733333,
-        0.644444,
-        0.555556,
-        0.466667,
-        0.377778,
-        0.288889,
+        0.200000,
+        0.200000,
+        0.200000,
+        0.200000,
+        0.200000,
+        0.200000,
+        0.200000,
+        0.200000,
+        0.200000,
         0.200000,
         0.200000,
         0.200000,
         0.200000,
     )
-    """单根桩边长（0~9 从 1.0 线性降到 0.2，之后保持 0.2）。"""
+    """单根桩边长（所有难度固定 0.2m）。"""
 
     pillar_gap_schedule: tuple[float, ...] = (
         0.010000,
@@ -91,6 +95,9 @@ class Stones2RowsTerrainCfg(SubTerrainCfg):
     num_rows: int = 2
     """每个方向的桩排数。"""
 
+    stagger_levels: int = 9
+    """0~9 级内第二排的纵向错位从 0 线性增加到 L，之后保持不变。"""
+
     platform_height: float = 0.2
     """中心/外侧平台厚度。"""
 
@@ -111,15 +118,38 @@ class Stones2RowsTerrainCfg(SubTerrainCfg):
     friction: tuple[float, float, float] = (1.0, 0.005, 0.0001)
     center_offset: tuple[float, float] = (0.0, 0.0)
 
+    def _pitch(self, level: int) -> float:
+        """L = gap + 桩 size。"""
+        return float(self.pillar_size_schedule[level]) + float(
+            self.pillar_gap_schedule[level]
+        )
+
+    def _row_stagger(self, level: int) -> float:
+        """第二排相对第一排的纵向错位 f(L)。
+
+        level 0 时 f=0（两排并排），level 9 时 f=L（两排完全交错）。
+        10~12 保持 level 9 的 f=L，几何不变。
+        """
+        if self.stagger_levels <= 0:
+            return self._pitch(level)
+        t = float(np.clip(level, 0, self.stagger_levels)) / self.stagger_levels
+        return t * self._pitch(level)
+
     def _target_distance(self, level: int) -> float:
         """中心平台中心到外侧平台中心的距离。"""
         platform = float(self.platform_size_schedule[level])
         size = float(self.pillar_size_schedule[level])
         gap = float(self.pillar_gap_schedule[level])
+        pitch = size + gap
+        stagger = self._row_stagger(level)
+        per_row = self.num_pillars_per_path // self.num_rows
+        # 中心平台半宽 + gap + 桩半宽 + 第二排错位 + 8L + 桩半宽 + gap + 平台半宽
         return (
             platform
-            + self.num_pillars_per_path * size
-            + (self.num_pillars_per_path + 1) * gap
+            + 2.0 * gap
+            + size
+            + stagger
+            + 2.0 * (per_row - 1) * pitch
         )
 
     def _add_box(
@@ -173,7 +203,10 @@ class Stones2RowsTerrainCfg(SubTerrainCfg):
 
         target_distance = self._target_distance(level)
         pillar_half = pillar_size / 2.0
-        row_lateral = (pillar_size + gap) / 2.0
+        pitch = pillar_size + gap
+        stagger = self._row_stagger(level)
+        per_row = self.num_pillars_per_path // self.num_rows
+        row_lateral = pitch / 2.0
 
         # 四个方向：东、西、北、南
         directions = (
@@ -204,36 +237,41 @@ class Stones2RowsTerrainCfg(SubTerrainCfg):
                 color=self.outer_platform_color,
             )
 
-            # 2 排 × 5 根，沿路径交错
-            for idx in range(self.num_pillars_per_path):
-                longitudinal = (
-                    platform_half
-                    + gap
-                    + pillar_half
-                    + idx * (pillar_size + gap)
-                )
-                row_sign = 1.0 if idx % 2 == 0 else -1.0
+            # 2 排 × 5 根：第一排贴平台的桩在 gap，
+            # 第二排相对第一排纵向错位 stagger（0 -> L）。
+            for row in range(self.num_rows):
+                row_sign = 1.0 if row % 2 == 0 else -1.0
                 lateral = row_sign * row_lateral
+                stagger_offset = 0.0 if row == 0 else stagger
 
-                self._add_box(
-                    geometries,
-                    body,
-                    size=(
-                        pillar_half,
-                        pillar_half,
-                        self.pillar_height / 2.0,
-                    ),
-                    pos=(
-                        cx + dx * longitudinal + px * lateral,
-                        cy + dy * longitudinal + py * lateral,
-                        self.pillar_height / 2.0,
-                    ),
-                    color=(
-                        self.pillar_left_color
-                        if idx % 2 == 0
-                        else self.pillar_right_color
-                    ),
-                )
+                for idx in range(per_row):
+                    longitudinal = (
+                        platform_half
+                        + gap
+                        + pillar_half
+                        + stagger_offset
+                        + idx * 2.0 * pitch
+                    )
+
+                    self._add_box(
+                        geometries,
+                        body,
+                        size=(
+                            pillar_half,
+                            pillar_half,
+                            self.pillar_height / 2.0,
+                        ),
+                        pos=(
+                            cx + dx * longitudinal + px * lateral,
+                            cy + dy * longitudinal + py * lateral,
+                            self.pillar_height / 2.0,
+                        ),
+                        color=(
+                            self.pillar_left_color
+                            if row == 0
+                            else self.pillar_right_color
+                        ),
+                    )
 
         origin = np.array(
             [float(cx), float(cy), float(self.platform_height)]
@@ -270,7 +308,7 @@ def stones_2rows_terrain(**overrides: Any) -> Stones2RowsTerrainCfg:
 
 # 13 个难度：0~12
 STONES_2ROWS_TERRAINS_CFG = TerrainGeneratorCfg(
-    # patch 需要容纳 level 0 的最远外侧平台（约 12.36m）
+    # patch 需要容纳最远外侧平台（level 9/10 约 5.70m）
     size=(27.0, 27.0),
     border_width=20.0,
     num_rows=13,

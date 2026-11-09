@@ -48,10 +48,18 @@ def randomize_stones_target(
         sub.pillar_gap_schedule, device=device, dtype=torch.float32
     )[levels]
 
+    pitch = size + gap
+    stagger_levels = max(int(getattr(sub, "stagger_levels", 9)), 1)
+    stagger_t = torch.clamp(levels.float(), 0.0, float(stagger_levels))
+    stagger_t = stagger_t / float(stagger_levels)
+    stagger = stagger_t * pitch
+    per_row = sub.num_pillars_per_path // sub.num_rows
     distance = (
         platform
-        + sub.num_pillars_per_path * size
-        + (sub.num_pillars_per_path + 1) * gap
+        + 2.0 * gap
+        + size
+        + stagger
+        + 2.0 * (per_row - 1) * pitch
     )
 
     directions = torch.tensor(

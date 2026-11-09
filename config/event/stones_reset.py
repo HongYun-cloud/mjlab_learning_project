@@ -54,12 +54,13 @@ def randomize_stones_target(
     stagger_t = stagger_t / float(stagger_levels)
     stagger = stagger_t * pitch
     per_row = sub.num_pillars_per_path // sub.num_rows
+    # 最后一根桩到平台边缘：gap + per_row*f + (per_row-1)*L
     distance = (
         platform
         + 2.0 * gap
         + size
-        + stagger
-        + 2.0 * (per_row - 1) * pitch
+        + per_row * stagger
+        + (per_row - 1) * pitch
     )
 
     directions = torch.tensor(

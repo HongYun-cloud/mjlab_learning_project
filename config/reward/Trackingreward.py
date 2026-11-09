@@ -274,7 +274,7 @@ class FootAccelPenalty:
         return torch.sum(torch.linalg.norm(acc, dim=-1), dim=-1)
 
 
-def end_pose(
+def normal_pose(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",
     distance_threshold: float | None = 0.25,

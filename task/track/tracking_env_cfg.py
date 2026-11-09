@@ -57,7 +57,6 @@ from myrobot_mjlab.config.reward.Trackingreward import (
   body_lateral_velocity_penalty,
   collision_penalty,
   diagonal_trot_reward,
-  end_pose,
   end_position,
   face_target,
   feet_slip_penalty,
@@ -67,6 +66,7 @@ from myrobot_mjlab.config.reward.Trackingreward import (
   joint_vel_limit,
   move_in_direction,
   MoveInDirectionFirstN,
+  normal_pose,
   reach_target,
   stand_pose,
   standstill,
@@ -363,9 +363,9 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "max_contacts": 4,
         },
       ),
-      # 终点姿态：|pitch| + |roll|
-      "end_pose": RewardTermCfg(
-        func=end_pose,
+      # 姿态惩罚：|pitch| + |roll|，distance_threshold=None 时全程生效。
+      "normal_pose": RewardTermCfg(
+        func=normal_pose,
         weight=-1.0,
         params={
           "command_name": "Goal_direction",

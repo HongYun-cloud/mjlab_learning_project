@@ -800,7 +800,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
 
   # 姿态惩罚全程生效，不再只在终点附近。
-  cfg.rewards["end_pose"].params["distance_threshold"] = None
+  cfg.rewards["normal_pose"].params["distance_threshold"] = None
 
   # Plum 专项：终止惩罚和前期前进引导。
   cfg.rewards["termination_penalty"].weight = -200.0
@@ -917,7 +917,7 @@ def my_go2_stones_2rows_env_cfg(
   )
 
   # 姿态惩罚全程生效，不再只在终点附近。
-  cfg.rewards["end_pose"].params["distance_threshold"] = None
+  cfg.rewards["normal_pose"].params["distance_threshold"] = None
 
   # 奖励配置与 Plum 的实际行为对齐：
   # aggressive_motion / torque_penalty 沿用 helper 的 Platform 默认值。

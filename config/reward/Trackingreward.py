@@ -343,12 +343,12 @@ def speed_limit_penalty(
 
     Formula:
         x = max(||v_xy|| - max_speed, 0)
-        reward = exp(x / e) - 1
+        reward = x^2
     """
     vel = env.scene["robot"].data.root_link_lin_vel_w[:, :2]
     speed = torch.linalg.norm(vel, dim=-1)
     excess = torch.clamp(speed - max_speed, min=0.0)
-    return torch.exp(excess / math.e) - 1.0
+    return torch.square(excess)
 
 
 def aggressive_motion_penalty(

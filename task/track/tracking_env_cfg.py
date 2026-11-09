@@ -1,4 +1,5 @@
 import math
+import os
 from dataclasses import replace
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -552,6 +553,11 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
     # Curriculum
     ##
     
+    curriculum_mode = os.getenv(
+      "MYROBOT_CURRICULUM_MODE", "curriculum"
+    ).strip().lower()
+    direct_random = curriculum_mode in ("random", "direct", "1", "true")
+
     curriculum = {
       "terrain_levels": CurriculumTermCfg(
         func=terrain_levels_reach_target,
@@ -560,6 +566,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "distance_threshold": 0.15,
           "required_reach_count": 3,
           "max_level": 6,
+          "direct_random": direct_random,
         },
       ),
     }

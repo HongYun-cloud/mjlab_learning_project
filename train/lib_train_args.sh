@@ -7,6 +7,8 @@
 #   MODEL      继续训练时加载的 checkpoint 文件名
 #   LOAD_ARGS  传给 uv run train 的 --agent.load-run / --agent.load-checkpoint
 #   RESUME     "True" 表示继续训练, "False" 表示重新开始
+#   CURRICULUM_MODE  "curriculum" 或 "random"，并通过
+#                    MYROBOT_CURRICULUM_MODE 传给 Track env_cfg
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     echo "该文件用于被 train/*.sh source，请不要直接执行。"
@@ -18,7 +20,7 @@ TRAIN_SCRIPT_NAME="$(basename "$0")"
 train_usage() {
     cat <<EOF
 用法:
-  ./train/$TRAIN_SCRIPT_NAME <run_name> [-p <run_dir>] [-m <iteration>]
+  ./train/$TRAIN_SCRIPT_NAME <run_name> [-p <run_dir>] [-m <iteration>] [-c <mode>]
 
 参数:
   <run_name>    本次训练的运行名称 (必填)
@@ -27,11 +29,15 @@ train_usage() {
   -m <iter>     从该 run 下的 model_<iter>.pt 继续训练
                 不写 -m 时默认使用该 run 下最新的 model_*.pt
                 仅在与 -p 一起使用时有效
+  -c <mode>     课程模式 (仅 Track 任务生效):
+                curriculum  按到达次数升级/降级，到最高难度后随机 (默认)
+                random      每次 reset 直接从 0~max_level 随机难度
 
 示例:
   ./train/$TRAIN_SCRIPT_NAME first
   ./train/$TRAIN_SCRIPT_NAME first -p 2026-10-27_20-25-32_baseline
   ./train/$TRAIN_SCRIPT_NAME first -p 2026-10-27_20-25-32_baseline -m 1000
+  ./train/$TRAIN_SCRIPT_NAME first -c random
 EOF
 }
 
@@ -42,6 +48,7 @@ train_parse_args() {
     MODEL=""
     LOAD_ARGS=()
     RESUME="False"
+    CURRICULUM_MODE="curriculum"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -51,6 +58,14 @@ train_parse_args() {
                     exit 1
                 fi
                 BASEPATH="$2"
+                shift 2
+                ;;
+            -c|--curriculum)
+                if [[ -z "${2:-}" ]]; then
+                    echo "错误：-c 后面需要跟 curriculum 或 random"
+                    exit 1
+                fi
+                CURRICULUM_MODE="$2"
                 shift 2
                 ;;
             -m|--model)
@@ -83,11 +98,36 @@ train_parse_args() {
         esac
     done
 
+    case "$CURRICULUM_MODE" in
+        curriculum|normal|0)
+            CURRICULUM_MODE="curriculum"
+            ;;
+        random|direct|1)
+            CURRICULUM_MODE="random"
+            ;;
+        *)
+            echo "错误：-c 只支持 curriculum 或 random"
+            exit 1
+            ;;
+    esac
+    export MYROBOT_CURRICULUM_MODE="$CURRICULUM_MODE"
+
     if [[ -z "$RUN_NAME" ]]; then
         echo "错误：必须指定本次运行的名称"
         train_usage
         exit 1
     fi
+
+    case "$TRAIN_SCRIPT_NAME" in
+        *_track.sh)
+            echo "课程模式：$CURRICULUM_MODE"
+            ;;
+        *)
+            if [[ "$CURRICULUM_MODE" == "random" ]]; then
+                echo "警告：-c 只对 *_track.sh 任务生效，当前脚本会忽略。"
+            fi
+            ;;
+    esac
 
     # 去掉 -p 末尾可能带上的斜杠
     BASEPATH="${BASEPATH%/}"

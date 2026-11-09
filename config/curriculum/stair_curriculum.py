@@ -136,6 +136,7 @@ def terrain_levels_reach_target(
     allow_downgrade: bool = True,
     max_level: int | None = None,
     randomize_at_max: bool = True,
+    direct_random: bool = False,
     increase_distance_on_flat: bool = False,
     distance_step: float = 0.5,
     max_distance: float = 5.0,
@@ -166,6 +167,12 @@ def terrain_levels_reach_target(
     -------------
     初始 reset（common_step_counter == 0）时冻结升降阶。
     升阶或降阶后，该环境的计数器清零，重新开始统计。
+
+    直接随机模式
+    ------------
+    ``direct_random=True`` 时不做课程升降，每次 reset 直接在
+    ``[0, max_level]``（``max_level=None`` 时为全部地形行）随机难度。
+    平地任务则是在 ``[min_distance, max_distance]`` 随机目标距离。
     """
     from myrobot_mjlab.config.reward.Trackingreward import _get_goal_pos
 
@@ -222,6 +229,13 @@ def terrain_levels_reach_target(
         move_up = torch.zeros_like(move_up)
         move_down = torch.zeros_like(move_down)
 
+    # 直接随机模式：不做课程升降，每次 reset 重新随机难度。
+    if direct_random:
+        move_up = torch.zeros_like(move_up)
+        move_down = torch.zeros_like(move_down)
+        env.target_reach_count[env_ids] = 0
+        env.target_fail_count[env_ids] = 0
+
     # 升阶或降阶后清零计数器
     reset_cnt_mask = move_up | move_down
     if reset_cnt_mask.any():
@@ -237,41 +251,59 @@ def terrain_levels_reach_target(
     )
 
     if has_terrain_gen:
-        old_levels = terrain.terrain_levels[env_ids].clone()
-        terrain.update_env_origins(env_ids, move_up, move_down)
+        if direct_random:
+            # 每次 reset 直接在 [0, max_level] 随机难度。
+            num_rows = terrain.terrain_origins.shape[0]
+            high = num_rows if max_level is None else min(max_level + 1, num_rows)
+            new_levels = torch.randint(
+                0, high, (len(env_ids),), device=env.device
+            )
+            terrain.terrain_levels[env_ids] = new_levels
+            terrain.env_origins[env_ids] = terrain.terrain_origins[
+                new_levels, terrain.terrain_types[env_ids]
+            ]
+        else:
+            old_levels = terrain.terrain_levels[env_ids].clone()
+            terrain.update_env_origins(env_ids, move_up, move_down)
 
-        # 到达 max_level 后不再继续加难，而是在 [0, max_level] 随机训练。
-        if max_level is not None and randomize_at_max:
-            max_level = min(max_level, terrain.terrain_origins.shape[0] - 1)
-            reset_level_mask = old_levels >= max_level
-            if reset_level_mask.any():
-                reset_ids = env_ids[reset_level_mask]
-                new_levels = torch.randint(
-                    0,
-                    max_level + 1,
-                    (len(reset_ids),),
-                    device=env.device,
-                )
-                terrain.terrain_levels[reset_ids] = new_levels
-                terrain.env_origins[reset_ids] = terrain.terrain_origins[
-                    new_levels, terrain.terrain_types[reset_ids]
-                ]
+            # 到达 max_level 后不再继续加难，而是在 [0, max_level] 随机训练。
+            if max_level is not None and randomize_at_max:
+                max_level = min(max_level, terrain.terrain_origins.shape[0] - 1)
+                reset_level_mask = old_levels >= max_level
+                if reset_level_mask.any():
+                    reset_ids = env_ids[reset_level_mask]
+                    new_levels = torch.randint(
+                        0,
+                        max_level + 1,
+                        (len(reset_ids),),
+                        device=env.device,
+                    )
+                    terrain.terrain_levels[reset_ids] = new_levels
+                    terrain.env_origins[reset_ids] = terrain.terrain_origins[
+                        new_levels, terrain.terrain_types[reset_ids]
+                    ]
     elif increase_distance_on_flat and command_name in env.command_manager.active_terms:
         cmd_term = env.command_manager.get_term(command_name)
         if not hasattr(cmd_term, "target_distances"):
             cmd_term.target_distances = torch.full(
                 (env.num_envs,), float(cmd_term.cfg.target_distance), device=env.device, dtype=torch.float32
             )
-        if move_up.any():
-            cmd_term.target_distances[env_ids[move_up]] = torch.clamp(
-                cmd_term.target_distances[env_ids[move_up]] + distance_step,
-                max=max_distance,
-            )
-        if allow_downgrade and move_down.any():
-            cmd_term.target_distances[env_ids[move_down]] = torch.clamp(
-                cmd_term.target_distances[env_ids[move_down]] - distance_step,
-                min=min_distance,
-            )
+        if direct_random:
+            # 平地任务：每次 reset 在 [min_distance, max_distance] 随机目标距离。
+            cmd_term.target_distances[env_ids] = torch.empty(
+                len(env_ids), device=env.device, dtype=torch.float32
+            ).uniform_(min_distance, max_distance)
+        else:
+            if move_up.any():
+                cmd_term.target_distances[env_ids[move_up]] = torch.clamp(
+                    cmd_term.target_distances[env_ids[move_up]] + distance_step,
+                    max=max_distance,
+                )
+            if allow_downgrade and move_down.any():
+                cmd_term.target_distances[env_ids[move_down]] = torch.clamp(
+                    cmd_term.target_distances[env_ids[move_down]] - distance_step,
+                    min=min_distance,
+                )
 
     # 6. 统计与监控指标
     result: dict[str, torch.Tensor] = {

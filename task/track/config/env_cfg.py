@@ -1,4 +1,5 @@
 import math
+import os
 from typing import Literal
 from dataclasses import replace
 
@@ -284,12 +285,16 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     }
 
   # 5. 平地课程：到达多次目标点后升级（提升目标距离）
+  curriculum_mode = os.getenv(
+    "MYROBOT_CURRICULUM_MODE", "curriculum"
+  ).strip().lower()
   cfg.curriculum["terrain_levels"] = CurriculumTermCfg(
     func=terrain_levels_reach_target,
     params={
       "command_name": "Goal_direction",
       "distance_threshold": 0.05,
       "required_reach_count": 3,
+      "direct_random": curriculum_mode in ("random", "direct", "1", "true"),
       "increase_distance_on_flat": True,
       "distance_step": 0.5,
       "max_distance": 5.0,

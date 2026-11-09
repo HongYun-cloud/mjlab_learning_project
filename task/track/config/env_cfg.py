@@ -797,7 +797,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
 
   # Plum 专项：终止惩罚和前期前进引导。
-  cfg.rewards["termination_penalty"].weight = 0.0
+  cfg.rewards["termination_penalty"].weight = -200.0
   cfg.rewards["track_target_position"].dense = True
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,
@@ -876,7 +876,7 @@ def my_go2_stones_2rows_env_cfg(
   - 奖励/终止使用 Platform/Stair 的基本配置；前期保留前进奖励
   """
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
+  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "single beam"
 
   cfg.sim.njmax = 300
   cfg.sim.contact_sensor_maxmatch = 64
@@ -903,12 +903,11 @@ def my_go2_stones_2rows_env_cfg(
     },
   )
 
-  # 与 Stair/Plum 一致的动作约束权重。
-  cfg.rewards["aggressive_motion"].weight = -5.0
-  cfg.rewards["torque_penalty"].weight = -1.0e-3
-
-  # 全程位置奖励 + 前期前进奖励。
-  cfg.rewards["track_target_position"].params["dense"] = True
+  # 奖励配置与 Plum 的实际行为对齐：
+  # aggressive_motion / torque_penalty 沿用 helper 的 Platform 默认值。
+  # Plum 的 track_target_position.dense=True 写在 cfg 属性上，函数实际读
+  # params["dense"]，所以 Plum 实际仍是非 dense；这里显式设为 False。
+  cfg.rewards["track_target_position"].params["dense"] = False
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,
     weight=1.5,
@@ -917,7 +916,7 @@ def my_go2_stones_2rows_env_cfg(
       "min_forward_speed": 0.05,
     },
   )
-  cfg.rewards["termination_penalty"].weight = -50.0
+  cfg.rewards["termination_penalty"].weight = -200.0
 
   cfg.events = {
     "reset_base": EventTermCfg(

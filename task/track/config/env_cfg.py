@@ -799,6 +799,9 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     },
   )
 
+  # 姿态惩罚全程生效，不再只在终点附近。
+  cfg.rewards["end_pose"].params["distance_threshold"] = None
+
   # Plum 专项：终止惩罚和前期前进引导。
   cfg.rewards["termination_penalty"].weight = -200.0
   cfg.rewards["track_target_position"].dense = True
@@ -913,10 +916,13 @@ def my_go2_stones_2rows_env_cfg(
     params={"min_height": -3.0},
   )
 
+  # 姿态惩罚全程生效，不再只在终点附近。
+  cfg.rewards["end_pose"].params["distance_threshold"] = None
+
   # 奖励配置与 Plum 的实际行为对齐：
   # aggressive_motion / torque_penalty 沿用 helper 的 Platform 默认值。
   # Plum 的 track_target_position.dense=True 写在 cfg 属性上，函数实际读
-  # params["dense"]，所以 Plum 实际仍是非 dense；这里显式设为 False。
+  # params["dense"]；这里用 params 显式打开 dense。
   cfg.rewards["track_target_position"].params["dense"] = True
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,

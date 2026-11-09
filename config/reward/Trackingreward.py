@@ -277,22 +277,28 @@ class FootAccelPenalty:
 def end_pose(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",
-    distance_threshold: float = 0.25,
+    distance_threshold: float | None = 0.25,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     **kwargs,
 ) -> torch.Tensor:
-    r"""Penalize body pitch and roll near the goal.
+    r"""Penalize body pitch and roll.
 
     Formula:
         |pitch| + |roll|
+
+    ``distance_threshold=None`` makes the penalty active for the whole episode.
+    Otherwise it only applies within ``distance_threshold`` of the goal.
     """
     asset: Entity = env.scene[asset_cfg.name]
+    roll, pitch, _ = euler_xyz_from_quat(asset.data.root_link_quat_w)
+    value = torch.abs(pitch) + torch.abs(roll)
+
+    if distance_threshold is None:
+        return value
+
     robot_pos = asset.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
     goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)[:, :2]
     dist = torch.linalg.norm(goal_pos - robot_pos, dim=-1)
-
-    roll, pitch, _ = euler_xyz_from_quat(asset.data.root_link_quat_w)
-    value = torch.abs(pitch) + torch.abs(roll)
     return torch.where(dist < distance_threshold, value, torch.zeros_like(value))
 
 

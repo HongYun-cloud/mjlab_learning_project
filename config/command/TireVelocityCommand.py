@@ -42,6 +42,51 @@ class TireTraverseVelocityCommand(UniformVelocityCommand):
         self.vel_command_b[env_ids, 1] = 0.0
         self.vel_command_b[env_ids, 2] = 0.0
 
+    def create_gui(
+        self,
+        name,
+        server,
+        get_env_idx,
+        on_change=None,
+        request_action=None,
+    ) -> None:
+        """在 Viser 面板显示当前 twist。
+
+        Tire 任务的 twist 由目标点自动计算，标准摇杆不会生效，
+        因此这里只创建只读显示面板。
+        """
+        with server.gui.add_folder(f"{name.capitalize()} (当前 twist)"):
+            self._twist_html = server.gui.add_html("")
+        self._twist_get_env_idx = get_env_idx
+        self._last_twist_html = None
+        self._update_twist_gui()
+
+    def _update_twist_gui(self) -> None:
+        html_handle = getattr(self, "_twist_html", None)
+        if html_handle is None:
+            return
+        idx = min(max(int(self._twist_get_env_idx()), 0), self.num_envs - 1)
+        cmd = self.command[idx].detach().cpu()
+        lin = self.robot.data.root_link_lin_vel_b[idx].detach().cpu()
+        ang_z = self.robot.data.root_link_ang_vel_b[idx, 2].detach().cpu()
+        html = (
+            '<div style="font-family: monospace; line-height: 1.45;">'
+            "<div><b>Command twist</b></div>"
+            f"<div>vx: {float(cmd[0]): .3f} m/s</div>"
+            f"<div>vy: {float(cmd[1]): .3f} m/s</div>"
+            f"<div>wz: {float(cmd[2]): .3f} rad/s</div>"
+            '<hr style="border: 0; border-top: 1px solid '
+            'rgba(255,255,255,0.15); margin: 6px 0;"/>'
+            "<div><b>Actual twist</b></div>"
+            f"<div>vx: {float(lin[0]): .3f} m/s</div>"
+            f"<div>vy: {float(lin[1]): .3f} m/s</div>"
+            f"<div>wz: {float(ang_z): .3f} rad/s</div>"
+            "</div>"
+        )
+        if html != getattr(self, "_last_twist_html", None):
+            html_handle.content = html
+            self._last_twist_html = html
+
     def compute(self, dt: float | torch.Tensor, env_ids: torch.Tensor | None = None) -> None:
         super().compute(dt, env_ids)
 
@@ -89,6 +134,8 @@ class TireTraverseVelocityCommand(UniformVelocityCommand):
             self.vel_command_b[reached_ids, 0] = self.cfg.forward_speed
             self.vel_command_b[reached_ids, 1] = 0.0
             self.vel_command_b[reached_ids, 2] = 0.0
+
+        self._update_twist_gui()
 
 
 @dataclass(kw_only=True)

@@ -4,8 +4,21 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from mjlab.entity import Entity
+from mjlab.managers.scene_entity_config import SceneEntityCfg
+
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
+
+
+def base_below_height(
+    env: ManagerBasedRlEnv,
+    min_height: float = -3.0,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """机身世界 z 低于 ``min_height`` 时终止（掉出世界）。"""
+    asset: Entity = env.scene[asset_cfg.name]
+    return asset.data.root_link_pos_w[:, 2] < min_height
 
 
 def randomize_stones_target(

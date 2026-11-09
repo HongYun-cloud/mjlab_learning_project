@@ -43,7 +43,10 @@ from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_reac
 from myrobot_mjlab.config.event.stair_reset import reset_root_state_from_stair,out_of_patch_bounds
 from myrobot_mjlab.config.event.tire_reset import reset_root_state_from_tire
 from myrobot_mjlab.config.event.plum_reset import randomize_plum_target
-from myrobot_mjlab.config.event.stones_reset import randomize_stones_target
+from myrobot_mjlab.config.event.stones_reset import (
+  base_below_height,
+  randomize_stones_target,
+)
 from myrobot_mjlab.config.reward.Trackingreward import goal_forward_bonus
 from myrobot_mjlab.config.reward.stair_reward import track_linear_velocity_stair
 from myrobot_mjlab.config.command.AllTrackingCommand import (
@@ -874,6 +877,7 @@ def my_go2_stones_2rows_env_cfg(
   - 中心平台 + 四个方向的双排交错梅花桩
   - 目标点固定在 E/W/N/S 四个外侧平台中心，每次 reset 随机选一个
   - 奖励/终止使用 Platform/Stair 的基本配置；前期保留前进奖励
+  - 机身世界 z < -3m（掉出世界）时终止
   """
   cfg = my_go2_rough_env_cfg(play=play)
   cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "single beam"
@@ -903,20 +907,26 @@ def my_go2_stones_2rows_env_cfg(
     },
   )
 
+  # 掉出世界：机身世界 z < -3m 时终止（只用于 Stones-2Rows）。
+  cfg.terminations["base_below_world"] = TerminationTermCfg(
+    func=base_below_height,
+    params={"min_height": -3.0},
+  )
+
   # 奖励配置与 Plum 的实际行为对齐：
   # aggressive_motion / torque_penalty 沿用 helper 的 Platform 默认值。
   # Plum 的 track_target_position.dense=True 写在 cfg 属性上，函数实际读
   # params["dense"]，所以 Plum 实际仍是非 dense；这里显式设为 False。
-  cfg.rewards["track_target_position"].params["dense"] = False
+  cfg.rewards["track_target_position"].params["dense"] = True
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,
-    weight=1.5,
+    weight=2.5,
     params={
       "command_name": "Goal_direction",
       "min_forward_speed": 0.05,
     },
   )
-  cfg.rewards["termination_penalty"].weight = -200.0
+  cfg.rewards["termination_penalty"].weight = -100.0
 
   cfg.events = {
     "reset_base": EventTermCfg(

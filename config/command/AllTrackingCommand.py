@@ -86,6 +86,8 @@ class GoalDirectionCommand(CommandTerm):
         self.reset_stats: list[dict[str, int]] = [collections.defaultdict(int) for _ in range(self.num_envs)]
         self._term_info_html = None
         self._last_html_content: str = ""
+        self._twist_html = None
+        self._last_twist_html: str = ""
         self._get_env_idx: Callable[[], int] | None = None
 
     @property
@@ -235,6 +237,44 @@ class GoalDirectionCommand(CommandTerm):
         self._command[ids, 0] = torch.cos(head_err)
         self._command[ids, 1] = torch.sin(head_err)
 
+        self._update_twist_gui()
+
+    def _update_twist_gui(self) -> None:
+        """在 Viser 面板显示当前实际 twist 与目标方向。"""
+        html_handle = getattr(self, "_twist_html", None)
+        if html_handle is None or self._get_env_idx is None:
+            return
+
+        idx = min(max(int(self._get_env_idx()), 0), self.num_envs - 1)
+        lin = self.robot.data.root_link_lin_vel_b[idx].detach().cpu()
+        ang_z = self.robot.data.root_link_ang_vel_b[idx, 2].detach().cpu()
+        cmd = self._command[idx].detach().cpu()
+        head_err_deg = float(self.heading_error[idx, 0].detach().cpu()) * 57.2957795
+        robot_xy = (
+            self.robot.data.root_link_pos_w[idx, :2]
+            - self._env.scene.env_origins[idx, :2]
+        )
+        dist = float(torch.linalg.norm(self.target_pos[idx] - robot_xy).detach().cpu())
+
+        html = (
+            '<div style="font-family: monospace; line-height: 1.45;">'
+            "<div><b>Actual twist</b></div>"
+            f"<div>vx: {float(lin[0]): .3f} m/s</div>"
+            f"<div>vy: {float(lin[1]): .3f} m/s</div>"
+            f"<div>wz: {float(ang_z): .3f} rad/s</div>"
+            '<hr style="border: 0; border-top: 1px solid '
+            'rgba(255,255,255,0.15); margin: 6px 0;"/>'
+            "<div><b>Goal command (body)</b></div>"
+            f"<div>dx: {float(cmd[0]): .3f}</div>"
+            f"<div>dy: {float(cmd[1]): .3f}</div>"
+            f"<div>heading error: {head_err_deg: .1f}°</div>"
+            f"<div>target distance: {dist: .2f} m</div>"
+            "</div>"
+        )
+        if html != self._last_twist_html:
+            html_handle.content = html
+            self._last_twist_html = html
+
     def _update_metrics(self) -> None:
         pass
 
@@ -358,6 +398,11 @@ class GoalDirectionCommand(CommandTerm):
                         request_action("RESET")
 
                 dropdown.on_update(_on_dropdown_change)
+
+        # 3. 当前实际 twist 与目标方向
+        with server.gui.add_folder("Current Twist (当前速度)"):
+            self._twist_html = server.gui.add_html("")
+            self._update_twist_gui()
 
     def _debug_vis_impl(self, visualizer: DebugVisualizer) -> None:
         """在播放或可视化时，在目标位置绘制高亮标志物与行进方向指示线，并在机身正上方显示终止原因。"""

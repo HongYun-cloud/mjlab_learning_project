@@ -29,14 +29,22 @@ class TerrainType(IntEnum):
 
     FLAT = 0
     """平地 (plane / flat)"""
-    STAIRS = 1
-    """楼梯 (stairs)"""
-    TIRE_ARRAY = 2
+    STAIR_UP = 1
+    """上楼梯 (stair up)"""
+    STAIR_DOWN = 2
+    """下楼梯 (stair down)"""
+    TIRE_ARRAY = 3
     """轮胎阵 (tire array)"""
-    PLATFORM = 3
+    PLATFORM = 4
     """沟壑 / 两平台跨越 (platform / trench)"""
-    SINGLE_BEAM = 4
+    SINGLE_BEAM = 5
     """单木桥 (single wooden beam / bridge)"""
+    PLUM = 6
+    """梅花桩 (plum blossom field)"""
+    STONE_2ROWS = 7
+    """双排石 (stones-2rows)"""
+    LOW_CLEARANCE_BAR = 8
+    """低净空横杆 (low clearance bar)"""
 
 
 TERRAIN_TYPE_NAMES: tuple[str, ...] = tuple(t.name.lower() for t in TerrainType)
@@ -47,9 +55,18 @@ _TERRAIN_TYPE_ALIASES: dict[str, TerrainType] = {
     "flat": TerrainType.FLAT,
     "plane": TerrainType.FLAT,
     "平地": TerrainType.FLAT,
-    "stairs": TerrainType.STAIRS,
-    "stair": TerrainType.STAIRS,
-    "楼梯": TerrainType.STAIRS,
+    "stair_up": TerrainType.STAIR_UP,
+    "stairs_up": TerrainType.STAIR_UP,
+    "up_stairs": TerrainType.STAIR_UP,
+    "stairup": TerrainType.STAIR_UP,
+    "stair_down": TerrainType.STAIR_DOWN,
+    "stairs_down": TerrainType.STAIR_DOWN,
+    "down_stairs": TerrainType.STAIR_DOWN,
+    "stairdown": TerrainType.STAIR_DOWN,
+    # 兼容旧配置：没有方向信息的 "stairs" 默认按上楼梯处理。
+    "stairs": TerrainType.STAIR_UP,
+    "stair": TerrainType.STAIR_UP,
+    "楼梯": TerrainType.STAIR_UP,
     "tire": TerrainType.TIRE_ARRAY,
     "tires": TerrainType.TIRE_ARRAY,
     "tire_array": TerrainType.TIRE_ARRAY,
@@ -69,10 +86,38 @@ _TERRAIN_TYPE_ALIASES: dict[str, TerrainType] = {
     "wooden_bridge": TerrainType.SINGLE_BEAM,
     "single_wooden_bridge": TerrainType.SINGLE_BEAM,
     "单木桥": TerrainType.SINGLE_BEAM,
+    "plum": TerrainType.PLUM,
+    "plum_blossom": TerrainType.PLUM,
+    "plum_blossoms": TerrainType.PLUM,
+    "plum_blossom_field": TerrainType.PLUM,
+    "梅花桩": TerrainType.PLUM,
+    "stone": TerrainType.STONE_2ROWS,
+    "stones": TerrainType.STONE_2ROWS,
+    "stone_2rows": TerrainType.STONE_2ROWS,
+    "stones_2rows": TerrainType.STONE_2ROWS,
+    "双排石": TerrainType.STONE_2ROWS,
+    "low_clearance_bar": TerrainType.LOW_CLEARANCE_BAR,
+    "low_clearance": TerrainType.LOW_CLEARANCE_BAR,
+    "clearance_bar": TerrainType.LOW_CLEARANCE_BAR,
+    "低净空横杆": TerrainType.LOW_CLEARANCE_BAR,
 }
 
 # 用于从地形生成器的 sub_terrain 名称/类名中自动推断类型。
 _TERRAIN_TYPE_KEYWORDS: tuple[tuple[str, TerrainType], ...] = (
+    ("stair_up", TerrainType.STAIR_UP),
+    ("stairs_up", TerrainType.STAIR_UP),
+    ("up_stair", TerrainType.STAIR_UP),
+    ("stair_down", TerrainType.STAIR_DOWN),
+    ("stairs_down", TerrainType.STAIR_DOWN),
+    ("down_stair", TerrainType.STAIR_DOWN),
+    # 没有方向信息时默认按上楼梯处理。
+    ("stair", TerrainType.STAIR_UP),
+    ("plum", TerrainType.PLUM),
+    ("stone_2rows", TerrainType.STONE_2ROWS),
+    ("stones_2rows", TerrainType.STONE_2ROWS),
+    ("stone", TerrainType.STONE_2ROWS),
+    ("low_clearance", TerrainType.LOW_CLEARANCE_BAR),
+    ("clearance_bar", TerrainType.LOW_CLEARANCE_BAR),
     ("single_beam", TerrainType.SINGLE_BEAM),
     ("wooden_beam", TerrainType.SINGLE_BEAM),
     ("wooden_bridge", TerrainType.SINGLE_BEAM),
@@ -81,7 +126,6 @@ _TERRAIN_TYPE_KEYWORDS: tuple[tuple[str, TerrainType], ...] = (
     ("beam", TerrainType.SINGLE_BEAM),
     ("tire", TerrainType.TIRE_ARRAY),
     ("tyre", TerrainType.TIRE_ARRAY),
-    ("stair", TerrainType.STAIRS),
     ("platform", TerrainType.PLATFORM),
     ("trench", TerrainType.PLATFORM),
     ("gap", TerrainType.PLATFORM),
@@ -189,10 +233,14 @@ def terrain_type(
 
     地形顺序固定为：
         0. 平地 (flat)
-        1. 楼梯 (stairs)
-        2. 轮胎阵 (tire array)
-        3. 沟壑/平台 (platform)
-        4. 单木桥 (single beam)
+        1. 上楼梯 (stair up)
+        2. 下楼梯 (stair down)
+        3. 轮胎阵 (tire array)
+        4. 沟壑/平台 (platform)
+        5. 单木桥 (single beam)
+        6. 梅花桩 (plum)
+        7. 双排石 (stones-2rows)
+        8. 低净空横杆 (low clearance bar)
     """
     if "terrain" in kwargs and kwargs["terrain"] is not None:
         terrain_type = kwargs["terrain"]

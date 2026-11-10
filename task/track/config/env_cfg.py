@@ -63,6 +63,14 @@ from mjlab.managers.command_manager import CommandTermCfg
 import traceback
 
 
+def _set_terrain_type(cfg: ManagerBasedRlEnvCfg, value: str) -> None:
+  """Set the terrain_type observation explicitly in actor and critic groups."""
+  for group_name in ("actor", "critic"):
+    group = cfg.observations.get(group_name)
+    if group is not None and "terrain_type" in group.terms:
+      group.terms["terrain_type"].params["terrain_type"] = value
+
+
 def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg = make_velocity_env_cfg()
 
@@ -306,8 +314,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
 
   # 6. 设置地形选项（平地）
-  if "terrain_type" in cfg.observations["actor"].terms:
-    cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "flat"
+  _set_terrain_type(cfg, "flat")
 
   # 7. 修改 command 参数（保持各项 command 不变，仅修改参数）
   cmd_goal = cfg.commands["Goal_direction"]
@@ -330,9 +337,11 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   return cfg
 
 def my_go2_stair_env_cfg(
-    play: bool = False,) -> ManagerBasedRlEnvCfg:
+    play: bool = False,
+    stair_direction: Literal["up", "down"] = "up",
+) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "stairs"
+  _set_terrain_type(cfg, f"stair_{stair_direction}")
   cfg.scene.terrain = TerrainEntityCfg(
             terrain_type="generator",
             terrain_generator=replace(STAIRS_TERRAINS_CFG),
@@ -428,6 +437,15 @@ def my_go2_stair_env_cfg(
 
   return cfg
 
+
+def my_go2_stair_up_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  return my_go2_stair_env_cfg(play=play, stair_direction="up")
+
+
+def my_go2_stair_down_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  return my_go2_stair_env_cfg(play=play, stair_direction="down")
+
+
 def my_go2_tire_env_cfg(
     play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
@@ -493,8 +511,7 @@ def my_go2_tire_env_cfg(
       ),
   }
 
-  if "terrain_type" in cfg.observations["actor"].terms:
-    cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "tire_array"
+  _set_terrain_type(cfg, "tire_array")
 
   if play:
     # 单环境 + 关闭观测扰动与课程。
@@ -700,7 +717,7 @@ def _add_joint_power_balance(
 
 def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "platform"
+  _set_terrain_type(cfg, "platform")
 
   cfg.scene.terrain = TerrainEntityCfg(
             terrain_type="generator",
@@ -778,7 +795,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   - 出生在中心平台，目标在 +X 方向外侧平地的中心。
   """
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "single beam"
+  _set_terrain_type(cfg, "plum")
 
   # 梅花桩地形有很多小桩，接触数量比普通地形大。
   cfg.sim.njmax = 300
@@ -910,7 +927,7 @@ def my_go2_stones_2rows_env_cfg(
   - 机身世界 z < -3m（掉出世界）时终止
   """
   cfg = my_go2_rough_env_cfg(play=play)
-  cfg.observations["actor"].terms["terrain_type"].params["terrain_type"] = "single beam"
+  _set_terrain_type(cfg, "stone_2rows")
 
   cfg.sim.njmax = 300
   cfg.sim.contact_sensor_maxmatch = 64
@@ -1012,4 +1029,17 @@ def my_go2_stones_2rows_env_cfg(
     cfg.scene.num_envs = 1
     cfg.scene.terrain.max_init_terrain_level = 12
 
+  return cfg
+
+
+def my_go2_low_clearance_bar_env_cfg(
+    play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Low-clearance-bar placeholder task.
+
+  Terrain generation parameters are intentionally left for a later change;
+  use the flat configuration until the real terrain is implemented.
+  """
+  cfg = my_go2_flat_env_cfg(play=play)
+  _set_terrain_type(cfg, "low_clearance_bar")
   return cfg

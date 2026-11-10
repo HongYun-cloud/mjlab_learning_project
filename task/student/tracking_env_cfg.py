@@ -1,9 +1,3 @@
-"""Reference copy of the Track env cfg.
-
-The active student env cfg is ``task/student/config/env_cfg.py``; it reuses
-the Track env configs directly.  This file is kept for reference and is not
-imported by the student config.
-"""
 import math
 import os
 from dataclasses import replace

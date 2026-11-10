@@ -1,9 +1,3 @@
-"""Reference copy of the Track env cfg.
-
-The active teacher env cfg is ``task/teacher/config/env_cfg.py``; it reuses
-the Track env configs directly.  Privileged observations are selected by
-``task/teacher/config/rl_cfg.py`` via ``obs_groups``.
-"""
 import math
 import os
 from dataclasses import replace
@@ -188,6 +182,9 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           params={"sensor_name": "feet_ground_contact"},
         ),
       }
+
+    # Teacher actor uses the privileged observation set.
+    actor_terms = critic_terms
 
     ##
     # RND (Random Network Distillation) 内在好奇心奖励输入

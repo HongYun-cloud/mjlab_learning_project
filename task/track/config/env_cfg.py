@@ -30,7 +30,10 @@ from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from myrobot_mjlab.task.track.tracking_env_cfg import make_velocity_env_cfg
 from mjlab.scene import SceneCfg
 from mjlab.terrains import TerrainEntityCfg
-from myrobot_mjlab.config.terrain.stair_terrain import STAIRS_TERRAINS_CFG
+from myrobot_mjlab.config.terrain.stair_terrain import (
+    STAIRS_DOWN_TERRAINS_CFG,
+    STAIRS_UP_TERRAINS_CFG,
+)
 from myrobot_mjlab.config.terrain.tire_array import TIRE_ARRAY_TERRAINS_CFG
 from myrobot_mjlab.config.terrain.step_platform_terrain import STEP_PLATFORM_TERRAINS_CFG
 from myrobot_mjlab.config.terrain.stones_2rows_terrain import STONES_2ROWS_TERRAINS_CFG
@@ -80,7 +83,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg.sim.contact_sensor_maxmatch = 500     # 最多处理多少个接触
   cfg.sim.mujoco.disableflags = ("multiccd","nativeccd") # 由于mjlab的MULTICCD和xml的margin这两种碰撞机制冲突现在关闭multiccd
 
-  cfg.scene.entities = {"robot": get_go2_robot_cfg()} 
+  cfg.scene.entities = {"robot": get_go2_robot_cfg()}
 
 
   foot_names = ("FR", "FL", "RR", "RL")
@@ -141,7 +144,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
     num_slots=1,
     history_length=4,
   )
-  
+
 
   # trunk_head_ground_cfg = ContactSensorCfg(
   #   name="trunk_ground_touch",
@@ -156,7 +159,7 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   #   num_slots=1,
   #   history_length=4,
   # )
-  
+
 
   cfg.scene.sensors = (cfg.scene.sensors or ()) + (
     feet_ground_cfg,
@@ -282,7 +285,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     time_out=True,
     params={"half_size": 6.0, "margin": 0.2},
   )
-  
+
   # 5. 平地步态与速度约束（目标速度设为 0.8 m/s，提升脚掌离地与站姿高度稳定性）
 
   cfg.rewards["track_target_bias"].params["speed_std"] = 0.25
@@ -338,13 +341,18 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
 def my_go2_stair_env_cfg(
     play: bool = False,
-    stair_direction: Literal["up", "down"] = "up",
+    stair_direction: Literal["up", "down"] = "down",
 ) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
   _set_terrain_type(cfg, f"stair_{stair_direction}")
+  stair_generator = (
+      STAIRS_UP_TERRAINS_CFG
+      if stair_direction == "up"
+      else STAIRS_DOWN_TERRAINS_CFG
+  )
   cfg.scene.terrain = TerrainEntityCfg(
             terrain_type="generator",
-            terrain_generator=replace(STAIRS_TERRAINS_CFG),
+            terrain_generator=replace(stair_generator),
             max_init_terrain_level=0,
         )
 
@@ -362,7 +370,7 @@ def my_go2_stair_env_cfg(
 
   for key in ("self_collisions", "trunk_head_collision","air_time"):
     cfg.rewards.pop(key, None)
-  
+
   # 1. 碰撞与步态约束（同步平地有效参数）
   cfg.rewards["shank_collision"] = RewardTermCfg(
     func=mdp.self_collision_cost,
@@ -414,7 +422,7 @@ def my_go2_stair_env_cfg(
       ),
     }
 
-  
+
   # 目标点向外移到最高台阶外沿附近，避免落在楼梯内侧。
   cmd_goal = cfg.commands["Goal_direction"]
   assert isinstance(cmd_goal, GoalDirectionCommandCfg)
@@ -467,7 +475,7 @@ def my_go2_tire_env_cfg(
     time_out=True,
     params={"half_size": 4.0, "margin": 0.1},
   )
-  
+
   cfg.commands["twist"] = TireTraverseVelocityCommandCfg(
       entity_name="robot",
       forward_speed=1.0,
@@ -777,12 +785,12 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     cfg.curriculum["terrain_levels"].params["max_level"] = 12
     cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
 
-  
+
   if play:
     cfg.scene.num_envs = 1
     cfg.scene.terrain.max_init_terrain_level = 5
 
-  
+
   return cfg
 
 

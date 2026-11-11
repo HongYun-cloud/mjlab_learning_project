@@ -413,6 +413,11 @@ def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
 
+  # stair 课程：通过 level 5 后不再继续加难，在 0~5 之间随机。
+  if "terrain_levels" in cfg.curriculum:
+    cfg.curriculum["terrain_levels"].params["max_level"] = 5
+    cfg.curriculum["terrain_levels"].params["randomize_at_max"] = True
+
   # stair 专用：前向速度低于期望值时给温和惩罚；终点附近关闭。
   cfg.rewards["stair_speed_tracking"] = RewardTermCfg(
     func=stair_forward_speed_penalty,

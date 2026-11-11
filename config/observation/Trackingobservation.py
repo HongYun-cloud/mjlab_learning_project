@@ -47,6 +47,12 @@ class TerrainType(IntEnum):
     """低净空横杆 (low clearance bar)"""
     STAIR_COMBINED = 9
     """组合楼梯 (up + flat gap + down)"""
+    POLE_SLALOM = 10
+    """绕桩 (pole slalom / weave poles)，占位类型"""
+    ROUGH_GROUND = 11
+    """粗糙地面 (rough ground)，占位类型"""
+    SLOPE = 12
+    """斜坡 (slope / ramp)，占位类型"""
 
 
 TERRAIN_TYPE_NAMES: tuple[str, ...] = tuple(t.name.lower() for t in TerrainType)
@@ -105,6 +111,23 @@ _TERRAIN_TYPE_ALIASES: dict[str, TerrainType] = {
     "low_clearance": TerrainType.LOW_CLEARANCE_BAR,
     "clearance_bar": TerrainType.LOW_CLEARANCE_BAR,
     "低净空横杆": TerrainType.LOW_CLEARANCE_BAR,
+    # 占位类型：只定义观测类型，暂不生成对应地形。
+    "pole_slalom": TerrainType.POLE_SLALOM,
+    "pole_slaloms": TerrainType.POLE_SLALOM,
+    "slalom": TerrainType.POLE_SLALOM,
+    "weave_poles": TerrainType.POLE_SLALOM,
+    "pole_weave": TerrainType.POLE_SLALOM,
+    "绕桩": TerrainType.POLE_SLALOM,
+    "rough": TerrainType.ROUGH_GROUND,
+    "rough_ground": TerrainType.ROUGH_GROUND,
+    "rough_terrain": TerrainType.ROUGH_GROUND,
+    "uneven_ground": TerrainType.ROUGH_GROUND,
+    "粗糙地面": TerrainType.ROUGH_GROUND,
+    "slope": TerrainType.SLOPE,
+    "ramp": TerrainType.SLOPE,
+    "incline": TerrainType.SLOPE,
+    "inclined_plane": TerrainType.SLOPE,
+    "斜坡": TerrainType.SLOPE,
 }
 
 # 用于从地形生成器的 sub_terrain 名称/类名中自动推断类型。
@@ -138,6 +161,16 @@ _TERRAIN_TYPE_KEYWORDS: tuple[tuple[str, TerrainType], ...] = (
     ("platform", TerrainType.PLATFORM),
     ("trench", TerrainType.PLATFORM),
     ("gap", TerrainType.PLATFORM),
+    # 占位类型：只用于从 sub_terrain 名称自动推断观测类型。
+    ("pole_slalom", TerrainType.POLE_SLALOM),
+    ("weave_pole", TerrainType.POLE_SLALOM),
+    ("slalom", TerrainType.POLE_SLALOM),
+    ("rough_ground", TerrainType.ROUGH_GROUND),
+    ("rough_terrain", TerrainType.ROUGH_GROUND),
+    ("rough", TerrainType.ROUGH_GROUND),
+    ("slope", TerrainType.SLOPE),
+    ("ramp", TerrainType.SLOPE),
+    ("incline", TerrainType.SLOPE),
     ("flat", TerrainType.FLAT),
     ("plane", TerrainType.FLAT),
 )
@@ -251,6 +284,9 @@ def terrain_type(
         7. 双排石 (stones-2rows)
         8. 低净空横杆 (low clearance bar)
         9. 组合楼梯 (up + flat gap + down)
+        10. 绕桩 (pole slalom，占位)
+        11. 粗糙地面 (rough ground，占位)
+        12. 斜坡 (slope，占位)
     """
     if "terrain" in kwargs and kwargs["terrain"] is not None:
         terrain_type = kwargs["terrain"]

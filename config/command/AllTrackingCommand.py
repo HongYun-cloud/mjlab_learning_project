@@ -358,10 +358,21 @@ class GoalDirectionCommand(CommandTerm):
                 getattr(generator_cfg, "sub_terrains", {}).keys()
             ).lower()
             if "stair" in sub_terrain_names:
-                options = [
-                    f"Level {i} ({'Flat/0m' if i == 0 else f'0.{i*3:02d}m steps'})"
-                    for i in range(num_levels)
-                ]
+                sub_cfgs = getattr(generator_cfg, "sub_terrains", {}) or {}
+                step_range = getattr(
+                    next(iter(sub_cfgs.values()), None), "step_height_range", None
+                )
+                options = []
+                for i in range(num_levels):
+                    if i == 0:
+                        label = "Flat/0m"
+                    elif step_range is not None:
+                        low, high = step_range
+                        step = low + (high - low) * i / max(num_levels - 1, 1)
+                        label = f"{step:.2f}m steps"
+                    else:
+                        label = f"0.{i * 3:02d}m steps"
+                    options.append(f"Level {i} ({label})")
             else:
                 # 非楼梯地形不要显示台阶高度，避免误导。
                 options = [f"Level {i}" for i in range(num_levels)]

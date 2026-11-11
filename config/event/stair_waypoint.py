@@ -7,6 +7,7 @@ import torch
 
 from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+from myrobot_mjlab.config.event.stair_reset import sync_specified_terrain_level
 from myrobot_mjlab.config.reward.Trackingreward import reach_target
 
 if TYPE_CHECKING:
@@ -64,6 +65,8 @@ def reset_root_state_at_stair_base_sides(
     if len(env_ids) == 0:
         return
 
+    sync_specified_terrain_level(env, env_ids)
+
     n = len(env_ids)
     side = torch.randint(0, 4, (n,), device=env.device)
     lateral = (
@@ -118,6 +121,8 @@ def reset_root_state_west_of_stair(
     """Spawn west of the up pyramid, facing east."""
     if len(env_ids) == 0:
         return
+
+    sync_specified_terrain_level(env, env_ids)
 
     n = len(env_ids)
     x = torch.full((n,), x_offset, device=env.device)

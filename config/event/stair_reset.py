@@ -20,6 +20,58 @@ if TYPE_CHECKING:
 from mjlab.envs.mdp.events import resolve_env_ids
 
 
+def sync_specified_terrain_level(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    specified_level: int | str | None = None,
+) -> None:
+    """把 ``env.specified_terrain_level`` / STAIR_LEVEL 应用到地形等级和 origin。
+
+    Viser 的“Terrain Difficulty”下拉框只写入 ``specified_terrain_level`` 并触发
+    reset；所有自定义 reset 函数都必须先调用本函数，难度切换才会真正生效。
+    """
+    if len(env_ids) == 0:
+        return
+
+    terrain = getattr(env.scene, "terrain", None)
+    if (
+        terrain is None
+        or not hasattr(terrain, "terrain_levels")
+        or getattr(terrain, "terrain_origins", None) is None
+    ):
+        return
+
+    target_lvl = getattr(env, "specified_terrain_level", None)
+    if target_lvl is None and specified_level is not None:
+        target_lvl = specified_level
+    if target_lvl is None:
+        env_var = os.getenv("STAIR_LEVEL") or os.getenv("TERRAIN_LEVEL")
+        if env_var is not None:
+            try:
+                target_lvl = int(env_var)
+            except ValueError:
+                target_lvl = env_var
+
+    if target_lvl is None:
+        return
+
+    num_rows = terrain.terrain_origins.shape[0]
+    if str(target_lvl).lower() == "random" or target_lvl == -1:
+        terrain.terrain_levels[env_ids] = torch.randint(
+            0, num_rows, (len(env_ids),), device=env.device
+        )
+    else:
+        try:
+            lvl = max(0, min(int(target_lvl), num_rows - 1))
+            terrain.terrain_levels[env_ids] = lvl
+        except (ValueError, TypeError):
+            pass
+
+    env.scene.env_origins[env_ids] = terrain.terrain_origins[
+        terrain.terrain_levels[env_ids], terrain.terrain_types[env_ids]
+    ]
+
+
 def reset_root_state_from_stair(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
@@ -38,35 +90,7 @@ def reset_root_state_from_stair(
     asset = env.scene[asset_cfg]
 
     # 0. 检查并同步指定的地形难度等级（Level 0 ~ num_rows-1）
-    terrain = getattr(env.scene, "terrain", None)
-    if terrain is not None and hasattr(terrain, "terrain_levels") and getattr(terrain, "terrain_origins", None) is not None:
-        target_lvl = getattr(env, "specified_terrain_level", None)
-        if target_lvl is None and specified_level is not None:
-            target_lvl = specified_level
-        if target_lvl is None:
-            env_var = os.getenv("STAIR_LEVEL") or os.getenv("TERRAIN_LEVEL")
-            if env_var is not None:
-                try:
-                    target_lvl = int(env_var)
-                except ValueError:
-                    target_lvl = env_var
-
-        if target_lvl is not None:
-            num_rows = terrain.terrain_origins.shape[0]
-            if str(target_lvl).lower() == "random" or target_lvl == -1:
-                terrain.terrain_levels[env_ids] = torch.randint(
-                    0, num_rows, (num_resets,), device=env.device
-                )
-            else:
-                try:
-                    lvl = max(0, min(int(target_lvl), num_rows - 1))
-                    terrain.terrain_levels[env_ids] = lvl
-                except (ValueError, TypeError):
-                    pass
-
-            env.scene.env_origins[env_ids] = terrain.terrain_origins[
-                terrain.terrain_levels[env_ids], terrain.terrain_types[env_ids]
-            ]
+    sync_specified_terrain_level(env, env_ids, specified_level)
     
     # 1. 克隆默认状态
     root_states = asset.data.default_root_state[env_ids].clone()

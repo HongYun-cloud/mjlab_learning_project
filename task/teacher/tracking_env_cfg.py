@@ -218,10 +218,11 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
 
     ## enable_corruption 扰动开关
     observations = {
+        # 教师 actor 是特权观测，训练和蒸馏都要求干净、确定的输入。
         "actor": ObservationGroupCfg(
           terms=actor_terms,
           concatenate_terms=True,
-          enable_corruption=True,
+          enable_corruption=False,
         ),
         "critic": ObservationGroupCfg(
           terms=critic_terms,

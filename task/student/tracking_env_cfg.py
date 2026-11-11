@@ -215,6 +215,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
 
     ## enable_corruption 扰动开关
     observations = {
+        # 学生 actor 是部署观测，训练时开启噪声；critic / rnd 保持干净。
         "actor": ObservationGroupCfg(
           terms=actor_terms,
           concatenate_terms=True,

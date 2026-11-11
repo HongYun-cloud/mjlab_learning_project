@@ -200,6 +200,45 @@ def stair_waypoint_timeout(
     return at_deadline & ~env.stair_waypoint_completed & ~reached_now
 
 
+def stair_forward_speed_penalty(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Goal_direction",
+    desired_speed: float = 0.8,
+    speed_deadzone: float = 0.3,
+    goal_deadzone: float = 0.35,
+    foot_body_names: tuple[str, ...] = (
+        "FR_foot",
+        "FL_foot",
+        "RR_foot",
+        "RL_foot",
+    ),
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    """Stair-only forward-speed penalty with a speed deadzone.
+
+    ``v_forward`` is the base XY velocity projected onto the direction from the
+    four-foot center to the current waypoint.  The penalty is zero within
+    ``speed_deadzone`` of ``desired_speed`` and near the goal.
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)[:, :2]
+    robot_xy = (
+        _get_foot_center_xy(asset, foot_body_names)
+        - env.scene.env_origins[:, :2]
+    )
+    to_goal = goal_pos - robot_xy
+    dist = torch.linalg.norm(to_goal, dim=-1)
+    direction = to_goal / dist.clamp(min=1e-6).unsqueeze(-1)
+
+    vel = asset.data.root_link_lin_vel_w[:, :2]
+    v_forward = torch.sum(vel * direction, dim=-1)
+    speed_error = torch.abs(v_forward - desired_speed)
+    x = torch.clamp(speed_error - speed_deadzone, min=0.0)
+    penalty = torch.square(x)
+    return torch.where(dist < goal_deadzone, torch.zeros_like(penalty), penalty)
+
+
 def standstill(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",

@@ -64,6 +64,7 @@ from myrobot_mjlab.config.event.stair_waypoint import (
 from myrobot_mjlab.config.reward.Trackingreward import (
   JointPowerBalancePenalty,
   goal_forward_bonus,
+  stair_forward_speed_penalty,
   stair_waypoint_timeout,
   stair_waypoint_track_target,
 )
@@ -412,6 +413,19 @@ def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["track_target_bias"].params["t_r"] = 10.0
   cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
+
+  # stair 专用：前向速度低于期望值时给温和惩罚；终点附近关闭。
+  cfg.rewards["stair_speed_tracking"] = RewardTermCfg(
+    func=stair_forward_speed_penalty,
+    weight=-0.1,
+    params={
+      "command_name": "Goal_direction",
+      "desired_speed": 0.8,
+      "speed_deadzone": 0.3,
+      "goal_deadzone": 0.35,
+      "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+    },
+  )
   return cfg
 
 

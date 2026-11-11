@@ -6,6 +6,7 @@ terrain selects its teacher from this registry by ``terrain_key``.
 
 TEACHER_CHECKPOINTS: dict[str, str] = {
     "Flat": "",
+    "Stair": "",
     "StairUp": "",
     "StairDown": "",
     "Platform": "",

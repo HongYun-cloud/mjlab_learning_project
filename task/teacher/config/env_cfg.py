@@ -15,6 +15,7 @@ from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers import TerminationTermCfg
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.sensor import (
@@ -31,6 +32,7 @@ from myrobot_mjlab.task.teacher.tracking_env_cfg import make_velocity_env_cfg
 from mjlab.scene import SceneCfg
 from mjlab.terrains import TerrainEntityCfg
 from myrobot_mjlab.config.terrain.stair_terrain import (
+    STAIRS_COMBINED_TERRAINS_CFG,
     STAIRS_DOWN_TERRAINS_CFG,
     STAIRS_UP_TERRAINS_CFG,
 )
@@ -50,6 +52,14 @@ from myrobot_mjlab.config.event.plum_reset import randomize_plum_target
 from myrobot_mjlab.config.event.stones_reset import (
   base_below_height,
   randomize_stones_target,
+)
+from myrobot_mjlab.config.event.stair_waypoint import (
+  reset_root_state_at_stair_base_sides,
+  reset_root_state_west_of_stair,
+  reset_stair_single_target,
+  reset_stair_waypoints,
+  stair_waypoint_success,
+  update_stair_waypoints,
 )
 from myrobot_mjlab.config.reward.Trackingreward import (
   JointPowerBalancePenalty,
@@ -339,22 +349,9 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   return cfg
 
-def my_go2_stair_env_cfg(
-    play: bool = False,
-    stair_direction: Literal["up", "down"] = "down",
-) -> ManagerBasedRlEnvCfg:
+def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """Shared stair rewards / terminations / episode / command settings."""
   cfg = my_go2_rough_env_cfg(play=play)
-  _set_terrain_type(cfg, f"stair_{stair_direction}")
-  stair_generator = (
-      STAIRS_UP_TERRAINS_CFG
-      if stair_direction == "up"
-      else STAIRS_DOWN_TERRAINS_CFG
-  )
-  cfg.scene.terrain = TerrainEntityCfg(
-            terrain_type="generator",
-            terrain_generator=replace(stair_generator),
-            max_init_terrain_level=0,
-        )
 
   # 头部/躯干与地形的接触传感器：只用于终止，不进奖励。
   trunk_head_ground_cfg = ContactSensorCfg(
@@ -368,18 +365,16 @@ def my_go2_stair_env_cfg(
   )
   cfg.scene.sensors = tuple(cfg.scene.sensors or ()) + (trunk_head_ground_cfg,)
 
-  for key in ("self_collisions", "trunk_head_collision","air_time"):
+  for key in ("self_collisions", "trunk_head_collision", "air_time"):
     cfg.rewards.pop(key, None)
 
-  # 1. 碰撞与步态约束（同步平地有效参数）
   cfg.rewards["shank_collision"] = RewardTermCfg(
     func=mdp.self_collision_cost,
     weight=-0.1,
     params={"sensor_name": "shank_ground_touch"},
   )
+  cfg.rewards["normal_pose"].distance_threshold = 0.25
 
-
-  # 2. 终止条件：大腿触地 illegal_contact，以及摔倒翻车限制 fell_over (70度)
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
@@ -388,70 +383,178 @@ def my_go2_stair_env_cfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "trunk_head_ground_touch"},
   )
-
   cfg.terminations.pop("reached_edge", None)
-  cfg.terminations.pop("fell_over",None)
+  cfg.terminations.pop("fell_over", None)
   cfg.terminations["out_of_patch_bounds"] = TerminationTermCfg(
     func=out_of_patch_bounds,
     time_out=True,
-    params={"half_size": 4.5, "margin": 0.2},  # limit=4.3m，为 3.8m 目标点预留 0.5m 缓冲
+    params={"half_size": 4.5, "margin": 0.2},
   )
-  cfg.events = {
-      "reset_base": EventTermCfg(
-        func=reset_root_state_from_stair,
-        mode="reset",
-        params={
-          "pose_range": {
-            "x": (-0.5, 0.5),
-            "y": (-0.5, 0.5),          # 倒金字塔中心凹底平地 (3m×3m 范围中央)
-            "z": (0.0, 0.0),
-            "yaw": (-3.14, 3.14),      # 凹底随机朝向四周
-          },
-            "velocity_range": {},
-            "nominal_height": 0.28,
-          },
-      ),
-      "reset_robot_joints": EventTermCfg(
-        func=mdp.reset_joints_by_offset,
-        mode="reset",
-        params={
-            "position_range": (0.0, 0.0),
-            "velocity_range": (0.0, 0.0),
-            "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
-        },
-      ),
-    }
 
+  cfg.events["reset_robot_joints"] = EventTermCfg(
+    func=mdp.reset_joints_by_offset,
+    mode="reset",
+    params={
+      "position_range": (0.0, 0.0),
+      "velocity_range": (0.0, 0.0),
+      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+    },
+  )
 
-  # 目标点向外移到最高台阶外沿附近，避免落在楼梯内侧。
   cmd_goal = cfg.commands["Goal_direction"]
   assert isinstance(cmd_goal, GoalDirectionCommandCfg)
   cmd_goal.target_distance = 3.8
-
-  # Stair 不使用 track_target_bias 的终点死区。
   cfg.rewards["track_target_bias"].params["goal_deadzone"] = 0.0
-
-  # Stair 使用 15s episode；奖励时间窗按 15/6 = 2.5 倍等比例拉长。
   cfg.episode_length_s = 15.0
-  cfg.rewards["track_target_position"].weight = 2.0  # (1 / t_r) * 10, t_r = 5
+  cfg.rewards["track_target_position"].weight = 2.0
   cfg.rewards["track_target_position"].params["t_r"] = 5.0
   cfg.rewards["track_target_bias"].params["t_r"] = 10.0
   cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
-
-  if play:
-    cfg.scene.num_envs = 1
-    cfg.scene.terrain.max_init_terrain_level = 5
-
   return cfg
 
 
 def my_go2_stair_up_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
-  return my_go2_stair_env_cfg(play=play, stair_direction="up")
+  """Up pyramid: spawn on the base ground at random E/W/N/S, target top center."""
+  cfg = _make_stair_env_cfg(play=play)
+  _set_terrain_type(cfg, "stair_up")
+  cfg.scene.terrain = TerrainEntityCfg(
+    terrain_type="generator",
+    terrain_generator=replace(STAIRS_UP_TERRAINS_CFG),
+    max_init_terrain_level=0,
+  )
+  cfg.terminations["out_of_patch_bounds"].params = {
+    "half_size": 6.5,
+    "margin": 0.2,
+  }
+  cfg.events["reset_base"] = EventTermCfg(
+    func=reset_root_state_at_stair_base_sides,
+    mode="reset",
+    params={
+      "side_distance": 5.0,
+      "lateral_jitter": 1.0,
+      "nominal_height": 0.28,
+    },
+  )
+  cfg.events["reset_goal"] = EventTermCfg(
+    func=reset_stair_single_target,
+    mode="reset",
+    params={"command_name": "Goal_direction", "target": (0.0, 0.0)},
+  )
+  cmd_goal = cfg.commands["Goal_direction"]
+  assert isinstance(cmd_goal, GoalDirectionCommandCfg)
+  cmd_goal.cardinal_directions = ("E",)
+  cmd_goal.target_distance = 0.0
+
+  if play:
+    cfg.scene.num_envs = 1
+    cfg.scene.terrain.max_init_terrain_level = 5
+  return cfg
 
 
 def my_go2_stair_down_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
-  return my_go2_stair_env_cfg(play=play, stair_direction="down")
+  """Down pyramid: spawn at the low center, target random E/W/N/S top side."""
+  cfg = _make_stair_env_cfg(play=play)
+  _set_terrain_type(cfg, "stair_down")
+  cfg.scene.terrain = TerrainEntityCfg(
+    terrain_type="generator",
+    terrain_generator=replace(STAIRS_DOWN_TERRAINS_CFG),
+    max_init_terrain_level=0,
+  )
+  cfg.terminations["out_of_patch_bounds"].params = {
+    "half_size": 4.5,
+    "margin": 0.2,
+  }
+  cfg.events["reset_base"] = EventTermCfg(
+    func=reset_root_state_from_stair,
+    mode="reset",
+    params={
+      "pose_range": {
+        "x": (-0.5, 0.5),
+        "y": (-0.5, 0.5),
+        "z": (0.0, 0.0),
+        "yaw": (-3.14, 3.14),
+      },
+      "velocity_range": {},
+      "nominal_height": 0.28,
+    },
+  )
+  cmd_goal = cfg.commands["Goal_direction"]
+  assert isinstance(cmd_goal, GoalDirectionCommandCfg)
+  cmd_goal.target_distance = 3.8
+
+  if play:
+    cfg.scene.num_envs = 1
+    cfg.scene.terrain.max_init_terrain_level = 5
+  return cfg
+
+
+def my_go2_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """Combined stair: up pyramid + 1m flat + down pyramid, 5 waypoints."""
+  cfg = _make_stair_env_cfg(play=play)
+  _set_terrain_type(cfg, "stair_combined")
+  cfg.scene.terrain = TerrainEntityCfg(
+    terrain_type="generator",
+    terrain_generator=replace(STAIRS_COMBINED_TERRAINS_CFG),
+    max_init_terrain_level=0,
+  )
+  cfg.terminations["out_of_patch_bounds"].params = {
+    "half_size_x": 9.5,
+    "half_size_y": 4.0,
+    "margin": 0.2,
+  }
+  cfg.events["reset_base"] = EventTermCfg(
+    func=reset_root_state_west_of_stair,
+    mode="reset",
+    params={
+      "x_offset": -7.0,
+      "y_range": (-0.5, 0.5),
+      "yaw": 0.0,
+      "nominal_height": 0.28,
+    },
+  )
+  cfg.events["reset_waypoints"] = EventTermCfg(
+    func=reset_stair_waypoints,
+    mode="reset",
+    params={
+      "command_name": "Goal_direction",
+      "height_command_name": "Base_height_target",
+      "waypoints": (
+        (-2.0, 0.0),
+        (1.3, 0.0),
+        (1.7, 0.0),
+        (5.0, 0.0),
+        (8.5, 0.0),
+      ),
+    },
+  )
+  cfg.events["update_waypoints"] = EventTermCfg(
+    func=update_stair_waypoints,
+    mode="step",
+    params={
+      "command_name": "Goal_direction",
+      "distance_threshold": 0.15,
+      "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+      "height_command_name": "Base_height_target",
+    },
+  )
+  cfg.metrics["reach_target_success"] = MetricsTermCfg(
+    func=stair_waypoint_success,
+    reduce="max",
+  )
+  cmd_goal = cfg.commands["Goal_direction"]
+  assert isinstance(cmd_goal, GoalDirectionCommandCfg)
+  cmd_goal.cardinal_directions = ("E",)
+  cmd_goal.target_distance = 3.8
+
+  cmd_height = cfg.commands["Base_height_target"]
+  assert isinstance(cmd_height, HeightTargetCommandCfg)
+  cmd_height.ground_z_min = None
+
+  if play:
+    cfg.scene.num_envs = 1
+    cfg.scene.terrain.max_init_terrain_level = 5
+  return cfg
 
 
 def my_go2_tire_env_cfg(

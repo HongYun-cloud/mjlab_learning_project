@@ -7,12 +7,12 @@
 #   ./train/train_track.sh <run_name> -e <terrain> [-p <run_dir>] [-m <model>]
 #
 # terrain:
-#   flat | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
+#   flat | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -46,7 +46,9 @@ case "$TERRAIN" in
         SUFFIX="Flat"; PROJECT="track_flat"; NUM_ENVS=1024; MAX_ITERATIONS=1000 ;;
     stair_up|stairup|up)
         SUFFIX="StairUp"; PROJECT="track_stair"; NUM_ENVS=512; MAX_ITERATIONS=5000 ;;
-    stair_down|stairdown|down|stair)
+    stair|stairs|stair_combined|combined_stair|combined_stairs)
+        SUFFIX="Stair"; PROJECT="track_stair"; NUM_ENVS=512; MAX_ITERATIONS=5000 ;;
+    stair_down|stairdown|down)
         SUFFIX="StairDown"; PROJECT="track_stair"; NUM_ENVS=512; MAX_ITERATIONS=5000 ;;
     platform)
         SUFFIX="Platform"; PROJECT="track_stair"; NUM_ENVS=1024; MAX_ITERATIONS=6000 ;;

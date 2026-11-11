@@ -45,6 +45,8 @@ class TerrainType(IntEnum):
     """双排石 (stones-2rows)"""
     LOW_CLEARANCE_BAR = 8
     """低净空横杆 (low clearance bar)"""
+    STAIR_COMBINED = 9
+    """组合楼梯 (up + flat gap + down)"""
 
 
 TERRAIN_TYPE_NAMES: tuple[str, ...] = tuple(t.name.lower() for t in TerrainType)
@@ -63,10 +65,13 @@ _TERRAIN_TYPE_ALIASES: dict[str, TerrainType] = {
     "stairs_down": TerrainType.STAIR_DOWN,
     "down_stairs": TerrainType.STAIR_DOWN,
     "stairdown": TerrainType.STAIR_DOWN,
-    # 兼容旧配置：没有方向信息的 "stairs" 默认按上楼梯处理。
-    "stairs": TerrainType.STAIR_UP,
-    "stair": TerrainType.STAIR_UP,
-    "楼梯": TerrainType.STAIR_UP,
+    # 兼容旧配置：没有方向信息的 "stairs" 是原来的倒金字塔。
+    "stairs": TerrainType.STAIR_DOWN,
+    "stair": TerrainType.STAIR_DOWN,
+    "楼梯": TerrainType.STAIR_DOWN,
+    "stair_combined": TerrainType.STAIR_COMBINED,
+    "combined_stair": TerrainType.STAIR_COMBINED,
+    "combined_stairs": TerrainType.STAIR_COMBINED,
     "tire": TerrainType.TIRE_ARRAY,
     "tires": TerrainType.TIRE_ARRAY,
     "tire_array": TerrainType.TIRE_ARRAY,
@@ -110,8 +115,12 @@ _TERRAIN_TYPE_KEYWORDS: tuple[tuple[str, TerrainType], ...] = (
     ("stair_down", TerrainType.STAIR_DOWN),
     ("stairs_down", TerrainType.STAIR_DOWN),
     ("down_stair", TerrainType.STAIR_DOWN),
-    # 没有方向信息时默认按上楼梯处理。
-    ("stair", TerrainType.STAIR_UP),
+    ("stair_combined", TerrainType.STAIR_COMBINED),
+    ("combined_stair", TerrainType.STAIR_COMBINED),
+    ("combined_stairs", TerrainType.STAIR_COMBINED),
+    ("stair_combo", TerrainType.STAIR_COMBINED),
+    # 没有方向信息的旧 "stair" 是倒金字塔。
+    ("stair", TerrainType.STAIR_DOWN),
     ("plum", TerrainType.PLUM),
     ("stone_2rows", TerrainType.STONE_2ROWS),
     ("stones_2rows", TerrainType.STONE_2ROWS),
@@ -241,6 +250,7 @@ def terrain_type(
         6. 梅花桩 (plum)
         7. 双排石 (stones-2rows)
         8. 低净空横杆 (low clearance bar)
+        9. 组合楼梯 (up + flat gap + down)
     """
     if "terrain" in kwargs and kwargs["terrain"] is not None:
         terrain_type = kwargs["terrain"]

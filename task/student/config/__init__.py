@@ -8,6 +8,7 @@ from .env_cfg import (
     my_go2_platform_env_cfg,
     my_go2_plum_env_cfg,
     my_go2_stair_down_env_cfg,
+    my_go2_stair_env_cfg,
     my_go2_stair_up_env_cfg,
     my_go2_stones_2rows_env_cfg,
     my_go2_tire_env_cfg,
@@ -18,6 +19,7 @@ from .teachers import TEACHER_CHECKPOINTS
 
 _TERRAINS = {
     "Flat": my_go2_flat_env_cfg,
+    "Stair": my_go2_stair_env_cfg,
     "StairUp": my_go2_stair_up_env_cfg,
     "StairDown": my_go2_stair_down_env_cfg,
     "Platform": my_go2_platform_env_cfg,

@@ -7,12 +7,12 @@
 #   ./train/train_teacher.sh <run_name> -e <terrain> [-p <run_dir>] [-m <model>]
 #
 # terrain:
-#   flat | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
+#   flat | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -44,7 +44,8 @@ TERRAIN="${TERRAIN//-/_}"
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
-    stair_down|stairdown|down|stair) SUFFIX="StairDown" ;;
+    stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
+    stair_down|stairdown|down) SUFFIX="StairDown" ;;
     platform) SUFFIX="Platform" ;;
     plum|plum_blossom|plumblossom) SUFFIX="PlumBlossom" ;;
     stones|stone2row|stones2row|stones2rows|stone_2rows|stones_2rows) SUFFIX="Stones2Rows" ;;

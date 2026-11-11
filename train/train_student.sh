@@ -7,7 +7,7 @@
 #   ./train/train_student.sh <run_name> -e <terrain> [-t <teacher_checkpoint>] [-p <student_run>] [-m <student_model>]
 #
 # terrain:
-#   flat | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
+#   flat | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
 #
 # -t: 教师 PPO checkpoint（文件或目录；目录时取最新的 *.pt）
 #     不指定时使用 task/student/config/teachers.py 里的注册路径。
@@ -16,7 +16,7 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 TEACHER_CHECKPOINT=""
 TEACHER_ARG_GIVEN=0
@@ -59,7 +59,8 @@ TERRAIN="${TERRAIN//-/_}"
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
-    stair_down|stairdown|down|stair) SUFFIX="StairDown" ;;
+    stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
+    stair_down|stairdown|down) SUFFIX="StairDown" ;;
     platform) SUFFIX="Platform" ;;
     plum|plum_blossom|plumblossom) SUFFIX="PlumBlossom" ;;
     stones|stone2row|stones2row|stones2rows|stone_2rows|stones_2rows) SUFFIX="Stones2Rows" ;;

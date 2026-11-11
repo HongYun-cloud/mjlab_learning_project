@@ -1,7 +1,10 @@
 from myrobot_mjlab.config.terrain.stair_terrain import (
+    STAIRS_COMBINED_TERRAINS_CFG,
     STAIRS_DOWN_TERRAINS_CFG,
     STAIRS_TERRAINS_CFG,
     STAIRS_UP_TERRAINS_CFG,
+    CombinedStairTerrainCfg,
+    UpStairsApronTerrainCfg,
     pyramid_stairs,
     pyramid_stairs_down,
     pyramid_stairs_inv,
@@ -27,8 +30,11 @@ from myrobot_mjlab.config.terrain.plum_blossom_terrain import (
 
 __all__ = [
     "STAIRS_TERRAINS_CFG",
+    "STAIRS_COMBINED_TERRAINS_CFG",
     "STAIRS_UP_TERRAINS_CFG",
     "STAIRS_DOWN_TERRAINS_CFG",
+    "CombinedStairTerrainCfg",
+    "UpStairsApronTerrainCfg",
     "pyramid_stairs",
     "pyramid_stairs_up",
     "pyramid_stairs_down",

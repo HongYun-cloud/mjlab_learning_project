@@ -575,6 +575,8 @@ class HeightTargetCommandCfg(CommandTermCfg):
     """四个足端 body 的名称，用于估算地形高度。"""
     height_smooth_alpha: float = 0.05
     """低通滤波系数 (0, 1]：越小越平滑，越大跟随越快。默认 0.05 较为平滑。"""
+    ground_z_min: float | None = 0.0
+    """足端相对高度下限。None 表示允许负高度（组合楼梯的 down 坑底）。"""
     resampling_time_range: tuple[float, float] = (10.0, 10.0)
     debug_vis: bool = False
 
@@ -597,6 +599,9 @@ class HeightTargetCommand(CommandTerm):
 
         # 初始化：相对地面高度从 0.0 开始，加上 nominal_height 作为初始高度命令 (0.28m)
         self._ground_z = torch.zeros(self.num_envs, device=self.device)
+        self._ground_z_override = torch.full(
+            (self.num_envs,), float("nan"), device=self.device
+        )
         self._command = torch.full((self.num_envs, 1), cfg.nominal_height, device=self.device)
 
         # 解析足端 body 的 body_id 索引
@@ -624,6 +629,23 @@ class HeightTargetCommand(CommandTerm):
         """返回当前步期望机身高度指令张量 (num_envs, 1)。"""
         return self._command
 
+    def set_ground_z_override(
+        self,
+        env_ids: torch.Tensor | slice | None,
+        ground_z: torch.Tensor | float,
+    ) -> None:
+        """把指定环境的相对地面高度固定为 ``ground_z``（楼梯 waypoint 用）。
+
+        传入 ``ground_z=nan`` 可清除覆盖，恢复足端地形跟随。
+        """
+        ids = slice(None) if env_ids is None else env_ids
+        if isinstance(ground_z, torch.Tensor):
+            self._ground_z_override[ids] = ground_z.to(
+                device=self.device, dtype=self._ground_z_override.dtype
+            )
+        else:
+            self._ground_z_override[ids] = float(ground_z)
+
     def _resample_command(self, env_ids: torch.Tensor) -> None:
         """重置时，重置对应环境相对地面高度估计为 0.0。"""
         if len(env_ids) == 0:
@@ -644,13 +666,19 @@ class HeightTargetCommand(CommandTerm):
         foot_z_rel = foot_pos_w[:, foot_ids, 2] - origin_z
 
         # 取最大相对 z：跟随当前踩上的最高地形（楼梯 / 轮胎 / 平台）。
-        raw_ground_z = foot_z_rel.max(dim=-1).values.clamp(min=0.0)
+        raw_ground_z = foot_z_rel.max(dim=-1).values
+        if self.cfg.ground_z_min is not None:
+            raw_ground_z = raw_ground_z.clamp(min=self.cfg.ground_z_min)
 
         # 低通滤波平滑地面相对高度估计
         alpha = self.cfg.height_smooth_alpha
-        self._ground_z[ids] = (
-            (1.0 - alpha) * self._ground_z[ids] + alpha * raw_ground_z[ids]
-        )
+        ground_z = (1.0 - alpha) * self._ground_z[ids] + alpha * raw_ground_z[ids]
+
+        # waypoint 指定的目标高度优先于足端估计，保证多段楼梯的目标高度确定。
+        override = self._ground_z_override[ids]
+        override_mask = ~torch.isnan(override)
+        ground_z = torch.where(override_mask, override, ground_z)
+        self._ground_z[ids] = ground_z
 
         # 输出 = 相对地面高度 + 标称站立高度 (在凹底出生时严格为 nominal_height=0.28)
         self._command[ids, 0] = self._ground_z[ids] + self.cfg.nominal_height

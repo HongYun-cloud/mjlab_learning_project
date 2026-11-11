@@ -54,9 +54,8 @@ from myrobot_mjlab.config.event.stones_reset import (
   randomize_stones_target,
 )
 from myrobot_mjlab.config.event.stair_waypoint import (
-  reset_root_state_at_stair_base_sides,
+  reset_root_state_at_stair_top,
   reset_root_state_west_of_stair,
-  reset_stair_single_target,
   reset_stair_waypoints,
   stair_waypoint_success,
   update_stair_waypoints,
@@ -430,7 +429,7 @@ def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
 
 def my_go2_stair_up_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
-  """Up pyramid: spawn on the base ground at random E/W/N/S, target top center."""
+  """Up pyramid: spawn at the top center, target random E/W/N/S bottom side."""
   cfg = _make_stair_env_cfg(play=play)
   _set_terrain_type(cfg, "stair_up")
   cfg.scene.terrain = TerrainEntityCfg(
@@ -443,23 +442,17 @@ def my_go2_stair_up_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     "margin": 0.2,
   }
   cfg.events["reset_base"] = EventTermCfg(
-    func=reset_root_state_at_stair_base_sides,
+    func=reset_root_state_at_stair_top,
     mode="reset",
     params={
-      "side_distance": 5.0,
-      "lateral_jitter": 1.0,
+      "target_distance": 3.8,
       "nominal_height": 0.28,
     },
   )
-  cfg.events["reset_goal"] = EventTermCfg(
-    func=reset_stair_single_target,
-    mode="reset",
-    params={"command_name": "Goal_direction", "target": (0.0, 0.0)},
-  )
   cmd_goal = cfg.commands["Goal_direction"]
   assert isinstance(cmd_goal, GoalDirectionCommandCfg)
-  cmd_goal.cardinal_directions = ("E",)
-  cmd_goal.target_distance = 0.0
+  cmd_goal.cardinal_directions = ("E", "N", "W", "S")
+  cmd_goal.target_distance = 3.8
 
   if play:
     cfg.scene.num_envs = 1

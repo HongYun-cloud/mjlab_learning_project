@@ -23,6 +23,7 @@ def _write_root_state(
     yaw: torch.Tensor,
     nominal_height: float,
     asset_cfg: SceneEntityCfg,
+    height_offset: torch.Tensor | float = 0.0,
 ) -> None:
     asset: Entity = env.scene[asset_cfg.name]
     root_states = asset.data.default_root_state[env_ids].clone()
@@ -30,7 +31,7 @@ def _write_root_state(
 
     root_states[:, 0] = origins[:, 0] + x
     root_states[:, 1] = origins[:, 1] + y
-    root_states[:, 2] = origins[:, 2] + nominal_height
+    root_states[:, 2] = origins[:, 2] + nominal_height + height_offset
 
     half_yaw = yaw * 0.5
     root_states[:, 3] = torch.cos(half_yaw)
@@ -162,7 +163,9 @@ def _stair_total_height(
         return torch.zeros(len(env_ids), device=env.device)
 
     sub_cfg = next(iter(generator.sub_terrains.values()))
-    size = getattr(sub_cfg, "up_size", sub_cfg.size)
+    size = getattr(sub_cfg, "up_size", None)
+    if size is None:
+        size = getattr(sub_cfg, "pyramid_size", sub_cfg.size)
     num_steps_x = int(
         (size[0] - 2 * sub_cfg.border_width - sub_cfg.platform_width)
         / (2 * sub_cfg.step_width)
@@ -287,6 +290,59 @@ def reset_stair_single_target(
     )
     command.target_positions[env_ids] = target_tensor
     command.target_pos[env_ids] = target_tensor
+    command._update_command(env_ids)
+
+
+def reset_root_state_at_stair_top(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor,
+    target_distance: float = 3.8,
+    nominal_height: float = 0.28,
+    command_name: str = "Goal_direction",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> None:
+    """Spawn on the up-pyramid top center; target a random bottom cardinal side."""
+    if len(env_ids) == 0:
+        return
+
+    sync_specified_terrain_level(env, env_ids)
+
+    n = len(env_ids)
+    total_height = _stair_total_height(env, env_ids)
+
+    # E, W, N, S；yaw 0 面向 +X，pi 面向 -X，pi/2 面向 +Y，-pi/2 面向 -Y。
+    direction = torch.randint(0, 4, (n,), device=env.device)
+    offsets = torch.tensor(
+        ((1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)),
+        device=env.device,
+        dtype=torch.float32,
+    )
+    targets = offsets[direction] * target_distance
+    yaw_table = torch.tensor(
+        (0.0, math.pi, math.pi / 2.0, -math.pi / 2.0),
+        device=env.device,
+        dtype=torch.float32,
+    )
+    yaw = yaw_table[direction]
+
+    zeros = torch.zeros((n,), device=env.device)
+    _write_root_state(
+        env,
+        env_ids,
+        x=zeros,
+        y=zeros,
+        yaw=yaw,
+        nominal_height=nominal_height,
+        height_offset=total_height,
+        asset_cfg=asset_cfg,
+    )
+
+    command = _get_goal_command(env, command_name)
+    if command is None:
+        return
+    _ensure_target_positions(command, env.num_envs, env.device)
+    command.target_positions[env_ids] = targets
+    command.target_pos[env_ids] = targets
     command._update_command(env_ids)
 
 

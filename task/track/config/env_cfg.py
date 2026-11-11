@@ -64,6 +64,8 @@ from myrobot_mjlab.config.event.stair_waypoint import (
 from myrobot_mjlab.config.reward.Trackingreward import (
   JointPowerBalancePenalty,
   goal_forward_bonus,
+  stair_waypoint_timeout,
+  stair_waypoint_track_target,
 )
 from myrobot_mjlab.config.reward.stair_reward import track_linear_velocity_stair
 from myrobot_mjlab.config.command.AllTrackingCommand import (
@@ -549,6 +551,38 @@ def my_go2_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cmd_height = cfg.commands["Base_height_target"]
   assert isinstance(cmd_height, HeightTargetCommandCfg)
   cmd_height.ground_z_min = None
+
+  # 5 个 waypoint × 8s = 40s；每个点从激活开始独立计时。
+  cfg.episode_length_s = 40.0
+
+  # 每个 waypoint 只在 8s 窗口的最后 2s 给跟踪奖励。
+  cfg.rewards.pop("track_target_position", None)
+  cfg.rewards["stair_waypoint_track"] = RewardTermCfg(
+    func=stair_waypoint_track_target,
+    weight=2.0,
+    params={
+      "command_name": "Goal_direction",
+      "window_s": 8.0,
+      "reward_window_s": 2.0,
+      "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+      "height_command_name": "Base_height_target",
+    },
+  )
+  # 航向对齐奖励在 40s episode 内全程可用（仍受 2m 距离门控）。
+  cfg.rewards["track_target_bias"].params["t_r"] = 40.0
+
+  # 当前 waypoint 8s 内未到达 -> 失败终止。
+  cfg.terminations["stair_waypoint_timeout"] = TerminationTermCfg(
+    func=stair_waypoint_timeout,
+    time_out=False,
+    params={
+      "window_s": 8.0,
+      "command_name": "Goal_direction",
+      "distance_threshold": 0.15,
+      "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
+      "height_command_name": "Base_height_target",
+    },
+  )
 
   if play:
     cfg.scene.num_envs = 1

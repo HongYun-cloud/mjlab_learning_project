@@ -123,6 +123,83 @@ def track_target_position(
     return torch.where(time_mask, reward, torch.zeros_like(reward))
 
 
+def stair_waypoint_track_target(
+    env: ManagerBasedRlEnv,
+    window_s: float = 8.0,
+    reward_window_s: float = 2.0,
+    command_name: str = "Goal_direction",
+    foot_body_names: tuple[str, ...] | None = None,
+    height_command_name: str | None = None,
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    """组合 stair 专用：每个 waypoint 只在其 8s 窗口的最后 2s 给跟踪奖励。
+
+    计时从当前 waypoint 激活时开始（reset 或上一个 waypoint 到达）。
+    前 ``window_s - reward_window_s`` 秒返回 0，最后 ``reward_window_s`` 秒
+    返回与 ``track_target_position`` 相同的 ``1 / (1 + dist^2)``。
+    """
+    raw = track_target_position(
+        env,
+        command_name=command_name,
+        foot_body_names=foot_body_names,
+        height_command_name=height_command_name,
+        asset_cfg=asset_cfg,
+        dense=True,
+        **kwargs,
+    )
+    if not hasattr(env, "stair_waypoint_start_time"):
+        return torch.zeros_like(raw)
+
+    start_time = env.stair_waypoint_start_time.to(
+        device=raw.device, dtype=raw.dtype
+    )
+    elapsed = (
+        env.episode_length_buf.to(device=raw.device, dtype=raw.dtype) * env.step_dt
+        - start_time
+    )
+    active = (elapsed >= window_s - reward_window_s) & (elapsed < window_s)
+    return torch.where(active, raw, torch.zeros_like(raw))
+
+
+def stair_waypoint_timeout(
+    env: ManagerBasedRlEnv,
+    window_s: float = 8.0,
+    command_name: str = "Goal_direction",
+    distance_threshold: float = 0.15,
+    foot_body_names: tuple[str, ...] = (
+        "FR_foot",
+        "FL_foot",
+        "RR_foot",
+        "RL_foot",
+    ),
+    height_command_name: str | None = "Base_height_target",
+) -> torch.Tensor:
+    """组合 stair 专用：当前 waypoint 超过 ``window_s`` 仍未到达则终止。"""
+    if not hasattr(env, "stair_waypoint_start_time") or not hasattr(
+        env, "stair_waypoint_completed"
+    ):
+        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    start_time = env.stair_waypoint_start_time.to(device=env.device, dtype=torch.float32)
+    elapsed = env.episode_length_buf.to(
+        device=env.device, dtype=torch.float32
+    ) * env.step_dt - start_time
+    at_deadline = (elapsed >= window_s) & (env.episode_length_buf > 0)
+    if not at_deadline.any():
+        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    # termination 在 step event 之前计算；截止步刚好到达也要算按时到达。
+    reached_now = reach_target(
+        env,
+        command_name=command_name,
+        distance_threshold=distance_threshold,
+        foot_body_names=foot_body_names,
+        height_command_name=height_command_name,
+    )
+    return at_deadline & ~env.stair_waypoint_completed & ~reached_now
+
+
 def standstill(
     env: ManagerBasedRlEnv,
     command_name: str = "Goal_direction",

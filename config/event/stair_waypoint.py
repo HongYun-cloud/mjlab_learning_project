@@ -250,8 +250,13 @@ def reset_stair_waypoints(
         env.stair_waypoint_completed = torch.zeros(
             env.num_envs, dtype=torch.bool, device=env.device
         )
+    if not hasattr(env, "stair_waypoint_start_time"):
+        env.stair_waypoint_start_time = torch.zeros(
+            env.num_envs, device=env.device, dtype=torch.float32
+        )
     env.stair_waypoint_index[env_ids] = 0
     env.stair_waypoint_completed[env_ids] = False
+    env.stair_waypoint_start_time[env_ids] = 0.0
 
     command = _get_goal_command(env, command_name)
     if command is None:
@@ -322,6 +327,10 @@ def update_stair_waypoints(
         ids = advance.nonzero(as_tuple=False).squeeze(-1)
         new_index = index[ids] + 1
         index[ids] = new_index
+        if hasattr(env, "stair_waypoint_start_time"):
+            env.stair_waypoint_start_time[ids] = (
+                env.episode_length_buf[ids].to(torch.float32) * env.step_dt
+            )
         next_targets = env.stair_waypoints[new_index]
         command.target_positions[ids] = next_targets
         command.target_pos[ids] = next_targets

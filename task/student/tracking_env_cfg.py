@@ -63,6 +63,7 @@ from myrobot_mjlab.config.reward.Trackingreward import (
   feet_slip_penalty,
   foot_contact_pattern_penalty,
   FootAccelPenalty,
+  JointPowerBalancePenalty,
   joint_power_penalty,
   joint_vel_limit,
   move_in_direction,
@@ -531,6 +532,19 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
 
       # Foot acceleration penalty: sum_4 ||a_foot||
 
+      # 全局：四条腿归一化关节功率平衡，惩罚持续的单腿/前腿主导。
+      "joint_power_balance": RewardTermCfg(
+        func=JointPowerBalancePenalty,
+        weight=-0.2,
+        params={
+          "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+          "window_s": 2.0,
+          "vel_norm": 30.0,
+          "torque_norm": 25.0,
+          "min_speed": 0.1,
+          "eps": 1e-8,
+        },
+      ),
     }
 
     ##

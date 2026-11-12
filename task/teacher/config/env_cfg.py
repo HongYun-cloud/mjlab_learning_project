@@ -1005,7 +1005,6 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       "margin": 0.2,
     },
   )
-  _add_joint_power_balance(cfg)
 
   # 姿态惩罚全程生效，不再只在终点附近。
   cfg.rewards["normal_pose"].params["distance_threshold"] = None
@@ -1117,7 +1116,6 @@ def my_go2_stones_2rows_env_cfg(
       "margin": 0.2,
     },
   )
-  _add_joint_power_balance(cfg)
 
   # 掉出世界：机身世界 z < -3m 时终止（只用于 Stones-2Rows）。
   cfg.terminations["base_below_world"] = TerminationTermCfg(

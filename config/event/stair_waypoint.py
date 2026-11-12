@@ -187,6 +187,24 @@ def _stair_total_height(
     return (num_steps + 1) * step_height
 
 
+def _set_height_command_ground_z(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor,
+    ground_z: torch.Tensor | float,
+    height_command_name: str | None = "Base_height_target",
+) -> None:
+    """把高度 command 的地形高度部分设为 ``ground_z``（相对 env origin）。"""
+    if height_command_name is None:
+        return
+    if height_command_name not in env.command_manager.active_terms:
+        return
+    command = env.command_manager.get_term(height_command_name)
+    if not hasattr(command, "set_ground_z_override"):
+        return
+    command.set_ground_z_override(env_ids, ground_z)
+    command._update_command(env_ids)
+
+
 def _set_waypoint_height_target(
     env: ManagerBasedRlEnv,
     env_ids: torch.Tensor,
@@ -209,10 +227,9 @@ def _set_waypoint_height_target(
     index = torch.as_tensor(waypoint_index, device=env.device)
     if index.ndim == 0:
         index = index.expand(len(env_ids))
-    command.set_ground_z_override(
-        env_ids, fractions[index] * total_height
+    _set_height_command_ground_z(
+        env, env_ids, fractions[index] * total_height, height_command_name
     )
-    command._update_command(env_ids)
 
 
 def _ensure_target_positions(
@@ -299,6 +316,7 @@ def reset_root_state_at_stair_top(
     target_distance: float = 3.8,
     nominal_height: float = 0.28,
     command_name: str = "Goal_direction",
+    height_command_name: str = "Base_height_target",
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> None:
     """Spawn on the up-pyramid top center; target a random bottom cardinal side."""
@@ -344,6 +362,23 @@ def reset_root_state_at_stair_top(
     command.target_positions[env_ids] = targets
     command.target_pos[env_ids] = targets
     command._update_command(env_ids)
+
+    # 目标点在金字塔底部，地形高度相对 env origin 为 0。
+    _set_height_command_ground_z(env, env_ids, 0.0, height_command_name)
+
+
+def reset_stair_down_height_target(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor,
+    height_command_name: str = "Base_height_target",
+) -> None:
+    """把 down 任务的高度 command 固定到顶部目标的地形高度 + nominal。"""
+    if len(env_ids) == 0:
+        return
+    total_height = _stair_total_height(env, env_ids)
+    _set_height_command_ground_z(
+        env, env_ids, total_height, height_command_name
+    )
 
 
 def update_stair_waypoints(
@@ -406,7 +441,9 @@ def stair_waypoint_success(env: ManagerBasedRlEnv) -> torch.Tensor:
 
 __all__ = [
     "reset_root_state_at_stair_base_sides",
+    "reset_root_state_at_stair_top",
     "reset_root_state_west_of_stair",
+    "reset_stair_down_height_target",
     "reset_stair_waypoints",
     "reset_stair_single_target",
     "update_stair_waypoints",

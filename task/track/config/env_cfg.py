@@ -56,6 +56,7 @@ from myrobot_mjlab.config.event.stones_reset import (
 from myrobot_mjlab.config.event.stair_waypoint import (
   reset_root_state_at_stair_top,
   reset_root_state_west_of_stair,
+  reset_stair_down_height_target,
   reset_stair_waypoints,
   stair_waypoint_success,
   update_stair_waypoints,
@@ -491,6 +492,12 @@ def my_go2_stair_down_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
       "velocity_range": {},
       "nominal_height": 0.28,
     },
+  )
+  # down 的目标在顶部四边：height command = 顶部地形高度 + 0.28。
+  cfg.events["reset_height_target"] = EventTermCfg(
+    func=reset_stair_down_height_target,
+    mode="reset",
+    params={"height_command_name": "Base_height_target"},
   )
   cmd_goal = cfg.commands["Goal_direction"]
   assert isinstance(cmd_goal, GoalDirectionCommandCfg)

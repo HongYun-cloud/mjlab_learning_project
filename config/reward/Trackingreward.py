@@ -357,25 +357,27 @@ def joint_power_penalty(
 class JointPowerBalancePenalty:
     """Penalize sustained imbalance of normalized joint power across four legs.
 
-    Formula:
-        p_i = (dot{q}_i / vel_norm) * (tau_i / torque_norm)
-        P_leg(t) = sum_{i in leg} p_i(t)^2
-        P_bar_leg = mean_t P_leg(t) over ``window_s``
-        raw = Var(P_bar_FL, P_bar_FR, P_bar_RL, P_bar_RR)
-        value = raw / (mean(P_bar_leg)^2 + eps)
+    Per-joint type comparison (hip vs hip, thigh vs thigh, calf vs calf):
+
+        p_{leg,j}(t) = (dot{q}_{leg,j} / vel_norm) * (tau_{leg,j} / torque_norm)
+        P_{leg,j}(t) = p_{leg,j}(t)^2
+        P_bar_{leg,j} = mean_t P_{leg,j}(t) over ``window_s``
+        Var_j = Var(P_bar_FL,j, P_bar_FR,j, P_bar_RL,j, P_bar_RR,j)
+        raw = mean_j( Var_j / (mean_leg(P_bar_leg,j)^2 + eps) )
 
     The penalty is zero when the base horizontal speed is at or below
     ``min_speed`` to avoid encouraging a stationary policy.
     """
 
     _LEG_PREFIXES = ("FL", "FR", "RL", "RR")
+    _JOINT_KEYWORDS = ("hip", "thigh", "calf")
 
     def __init__(self, cfg, env: ManagerBasedRlEnv):
         self._env = env
         self._window_s = float(cfg.params.get("window_s", 2.0))
         self._window_steps = max(1, int(round(self._window_s / env.step_dt)))
         self._buffer = torch.zeros(
-            (env.num_envs, self._window_steps, 4),
+            (env.num_envs, self._window_steps, 4, 3),
             device=env.device,
             dtype=torch.float32,
         )
@@ -383,7 +385,7 @@ class JointPowerBalancePenalty:
             env.num_envs, device=env.device, dtype=torch.long
         )
         self._ptr = 0
-        self._leg_joint_ids: list[torch.Tensor] | None = None
+        self._leg_joint_ids: torch.Tensor | None = None
 
     def reset(self, env_ids: torch.Tensor | slice | None = None) -> None:
         if env_ids is None:
@@ -395,22 +397,25 @@ class JointPowerBalancePenalty:
         if self._leg_joint_ids is not None:
             return
         names = list(asset.joint_names)
-        ids: list[torch.Tensor] = []
+        ids: list[list[int]] = []
         for prefix in self._LEG_PREFIXES:
-            leg_ids = [
-                i for i, name in enumerate(names) if name.startswith(prefix)
-            ]
-            if len(leg_ids) != 3:
-                raise ValueError(
-                    "JointPowerBalancePenalty expects 3 joints per leg, "
-                    f"got {len(leg_ids)} for {prefix}: {names}"
-                )
-            ids.append(
-                torch.tensor(
-                    leg_ids, device=self._buffer.device, dtype=torch.long
-                )
-            )
-        self._leg_joint_ids = ids
+            leg_ids: list[int] = []
+            for keyword in self._JOINT_KEYWORDS:
+                matches = [
+                    i
+                    for i, name in enumerate(names)
+                    if name.startswith(prefix) and keyword in name
+                ]
+                if len(matches) != 1:
+                    raise ValueError(
+                        f"JointPowerBalancePenalty expected one {prefix} {keyword} "
+                        f"joint, got {len(matches)} in {names}"
+                    )
+                leg_ids.append(matches[0])
+            ids.append(leg_ids)
+        self._leg_joint_ids = torch.tensor(
+            ids, device=self._buffer.device, dtype=torch.long
+        )
 
     def __call__(
         self,
@@ -429,28 +434,30 @@ class JointPowerBalancePenalty:
         tau = asset.data.qfrc_actuator
         power = (qdot / vel_norm) * (tau / torque_norm)
         power_sq = torch.square(power)
-        per_leg = torch.stack(
-            [power_sq[:, ids].sum(dim=-1) for ids in self._leg_joint_ids],
-            dim=-1,
-        )
 
-        self._buffer[:, self._ptr, :] = per_leg
+        # [B, 4 legs, 3 joint types]
+        per_joint = power_sq[:, self._leg_joint_ids]
+
+        self._buffer[:, self._ptr, :, :] = per_joint
         self._ptr = (self._ptr + 1) % self._window_steps
         self._count += 1
         self._count.clamp_(max=self._window_steps)
 
-        denom = self._count.clamp(min=1).to(per_leg.dtype).unsqueeze(-1)
-        mean_power = self._buffer.sum(dim=1) / denom
-        variance = mean_power.var(dim=1, unbiased=False)
+        denom = self._count.clamp(min=1).to(per_joint.dtype)
+        mean_power = self._buffer.sum(dim=1) / denom[:, None, None]
+
+        # Variance across the 4 legs, separately for hip / thigh / calf.
+        variance = mean_power.var(dim=1, unbiased=False)  # [B, 3]
         normalized = variance / (
             torch.square(mean_power.mean(dim=1)) + eps
         )
+        value = normalized.mean(dim=-1)
 
         speed = torch.linalg.norm(
             asset.data.root_link_lin_vel_w[:, :2], dim=-1
         )
         return torch.where(
-            speed > min_speed, normalized, torch.zeros_like(normalized)
+            speed > min_speed, value, torch.zeros_like(value)
         )
 
 

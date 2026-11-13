@@ -289,10 +289,22 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           resampling_time_range=(4.0, 10.0),
           debug_vis=True,
         ),
-        "Heading_error": HeadErrorCommandCfg(
+        # XY 任意方向线速度指令：vx/vy 在范围内随机采样，wz=0。
+        "Base_velocity": UniformVelocityCommandCfg(
           entity_name="robot",
-          resampling_time_range=(10.0, 10.0),
-          debug_vis=False,
+          resampling_time_range=(5.0, 10.0),
+          ranges=UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0),
+            lin_vel_y=(-1.0, 1.0),
+            ang_vel_z=(0.0, 0.0),
+          ),
+          heading_command=False,
+          rel_standing_envs=0.0,
+          rel_heading_envs=0.0,
+          rel_world_envs=0.0,
+          rel_forward_envs=0.0,
+          init_velocity_prob=0.0,
+          debug_vis=True,
         ),
       }
 
@@ -420,19 +432,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       # sum_i ((qdot_i / 30) * (tau_i / 25))^2
       "joint_power": RewardTermCfg(
         func=joint_power_penalty,
-        weight=-0.025,
+        weight=-0.125,
         params={
           "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
           "vel_norm": 30.0,
           "torque_norm": 25.0,
         },
-      ),
-
-      # Torque penalty: ||tau||^2
-      "torque_penalty": RewardTermCfg(
-        func=envs_mdp.joint_torques_l2,
-        weight=-1.0e-4,
-        params={"asset_cfg": SceneEntityCfg("robot")},
       ),
       # Base acceleration penalty: ||a_lin||^2 + 0.02 * ||a_ang||^2
       "base_accel_penalty": RewardTermCfg(
@@ -461,12 +466,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
         },
       ),
-      # Speed soft limit: zero below 0.5 m/s; exp((v-0.5)/e)-1 above.
-      "speed_limit_penalty": RewardTermCfg(
-        func=speed_limit_penalty,
-        weight=-0.5,
-        params={"max_speed": 1.5},
-      ),
       # 论文 Aggressive Motion: (|v_H| - 1)^2 * 1(|v_H| > 1)
       "aggressive_motion": RewardTermCfg(
         func=aggressive_motion_penalty,
@@ -483,17 +482,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         func=face_target,
         weight=0.8,
         params={"min_heading_error": math.pi / 2},
-      ),
-      # 终点附近生效
-      "standstill": RewardTermCfg(
-        func=standstill,
-        weight=-1.0,
-        params={
-          "command_name": "Goal_direction",
-          "distance_threshold": 0.25,
-          "heading_threshold": 0.5,
-          "t_r": 2.0,
-        },
       ),
       # 终点附近生效
       "stand_pose": RewardTermCfg(
@@ -522,11 +510,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
             r".*(FR|FL|RR|RL)_calf_joint.*": 0.75,
           },
         },
-      ),
-      "angular_momentum": RewardTermCfg(
-        func=mdp.angular_momentum_penalty,
-        weight=0.0,  # Override per-robot
-        params={"sensor_name": "robot/root_angmom"},
       ),
       # 全局：四条腿归一化关节功率平衡，惩罚持续的单腿/前腿主导。
       "joint_power_balance": RewardTermCfg(
@@ -590,7 +573,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
             max_init_terrain_level=0,
         ),
 
-        sensors=(terrain_scan,),
+        sensors=(terrain_scan, base_height_sensor),
         num_envs=1,
         extent=2.0,
       ),

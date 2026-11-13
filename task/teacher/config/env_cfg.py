@@ -198,7 +198,8 @@ def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   if "upright" in cfg.rewards:
     cfg.rewards["upright"].params["asset_cfg"].body_names = ("base_link",)
 
-  cfg.rewards["angular_momentum"].weight = 0.0
+  if "angular_momentum" in cfg.rewards:
+    cfg.rewards["angular_momentum"].weight = 0.0
   if "air_time" in cfg.rewards:
     cfg.rewards["air_time"].weight = 0.0
 
@@ -275,14 +276,13 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     weight=-0.1,
     params={"sensor_name": "shank_ground_touch"},
   )
-  cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
+  if "speed_limit_penalty" in cfg.rewards:
+    cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
   # 4. 终止条件：平地加入 fell_over、大腿触地 illegal_contact。
   cfg.terminations["fell_over"] = TerminationTermCfg(
     func=mdp.bad_orientation,
     params={"limit_angle": math.radians(70.0)},
   )
-
-
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
@@ -342,10 +342,6 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cmd_height.nominal_height = 0.25
   cmd_height.height_smooth_alpha = 0.05
 
-  cmd_head = cfg.commands["Heading_error"]
-  assert isinstance(cmd_head, HeadErrorCommandCfg)
-  cmd_head.resampling_time_range = (10.0, 10.0)
-
   if play:
     cfg.scene.num_envs = 1
 
@@ -376,7 +372,8 @@ def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     params={"sensor_name": "shank_ground_touch"},
   )
   cfg.rewards["normal_pose"].distance_threshold = 0.25
-  cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
+  if "speed_limit_penalty" in cfg.rewards:
+    cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
@@ -411,7 +408,8 @@ def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["track_target_position"].weight = 2.0
   cfg.rewards["track_target_position"].params["t_r"] = 5.0
   cfg.rewards["track_target_bias"].params["t_r"] = 10.0
-  cfg.rewards["standstill"].params["t_r"] = 5.0
+  if "standstill" in cfg.rewards:
+    cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
 
   # stair 课程：通过 level 5 后不再继续加难，在 0~5 之间随机。
@@ -866,12 +864,15 @@ def _apply_platform_like_config(
   cfg.rewards["track_target_position"].weight = 2.0
   cfg.rewards["track_target_position"].params["t_r"] = 5.0
   cfg.rewards["track_target_bias"].params["t_r"] = 10.0
-  cfg.rewards["standstill"].params["t_r"] = 5.0
+  if "standstill" in cfg.rewards:
+    cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
 
   # Platform 的额外权重调整。
-  cfg.rewards["torque_penalty"].weight = -1.0e-4
-  cfg.rewards["aggressive_motion"].weight = -4.0
+  if "torque_penalty" in cfg.rewards:
+    cfg.rewards["torque_penalty"].weight = -1.0e-4
+  if "aggressive_motion" in cfg.rewards:
+    cfg.rewards["aggressive_motion"].weight = -4.0
 
 
 def _add_joint_power_balance(
@@ -901,7 +902,8 @@ def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
             terrain_generator=replace(STEP_PLATFORM_TERRAINS_CFG),
             max_init_terrain_level=0,
         )
-  cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
+  if "speed_limit_penalty" in cfg.rewards:
+    cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
   # Platform 的目标点在第二平台中心，方向必须沿地形行进方向固定，
   # 不能像 Stair 一样在四个基本方位里随机采样。
   platform_sub = next(

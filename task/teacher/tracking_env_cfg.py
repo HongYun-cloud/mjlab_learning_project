@@ -375,7 +375,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         weight=-1.0,
         params={
           "command_name": "Goal_direction",
-          "distance_threshold": 0.25,
+          # "distance_threshold": 0.25,
         },
       ),
       # 终点 0.2m 内：四足中心 XY error 越小，exp(-error/0.05) 越大。
@@ -409,7 +409,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       # Joint velocity soft limit: sum_i max(|dot{q}_i| - 0.9*limit_i, 0)
       "joint_vel_limit": RewardTermCfg(
         func=joint_vel_limit,
-        weight=-1.0,
+        weight=-0.5,
         params={
           "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
           "vel_limit": 10.0,
@@ -431,7 +431,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       # Torque penalty: ||tau||^2
       "torque_penalty": RewardTermCfg(
         func=envs_mdp.joint_torques_l2,
-        weight=-1.0e-3,
+        weight=-1.0e-4,
         params={"asset_cfg": SceneEntityCfg("robot")},
       ),
       # Base acceleration penalty: ||a_lin||^2 + 0.02 * ||a_ang||^2
@@ -451,8 +451,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         },
       ),
       "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.05),
-
-
       "stall_penalty": RewardTermCfg(
         func=stall_penalty,
         weight=-1.0,
@@ -466,7 +464,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       # Speed soft limit: zero below 0.5 m/s; exp((v-0.5)/e)-1 above.
       "speed_limit_penalty": RewardTermCfg(
         func=speed_limit_penalty,
-        weight=-1.0,
+        weight=-0.5,
         params={"max_speed": 1.5},
       ),
       # 论文 Aggressive Motion: (|v_H| - 1)^2 * 1(|v_H| > 1)
@@ -516,7 +514,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       ),
       "pose": RewardTermCfg(
         func=envs_mdp.posture,
-        weight=0.5,
+        weight=1.0,
         params={
           "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
           "std": {
@@ -530,11 +528,6 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         weight=0.0,  # Override per-robot
         params={"sensor_name": "robot/root_angmom"},
       ),
-
-
-
-      # Foot acceleration penalty: sum_4 ||a_foot||
-
       # 全局：四条腿归一化关节功率平衡，惩罚持续的单腿/前腿主导。
       "joint_power_balance": RewardTermCfg(
         func=JointPowerBalancePenalty,

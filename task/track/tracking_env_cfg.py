@@ -17,6 +17,7 @@ from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.scene import SceneCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.sensor import (
+  CameraSensorCfg,
   GridPatternCfg,
   ObjRef,
   RayCastSensorCfg,
@@ -41,6 +42,7 @@ from myrobot_mjlab.config.command.AllTrackingCommand import (
 )
 from myrobot_mjlab.config.observation.Trackingobservation import (
   base_height,
+  camera_depth,
   direction_real,
   direction_to_goal,
   friction_coefficient,
@@ -92,6 +94,26 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       exclude_parent_body=True,
       include_geom_groups=(0,),  # Terrain only.
       debug_vis=True,
+    )
+
+    # 前向深度相机：挂在 base_link，光轴朝 +X、下俯 20°。
+    # play / 可视化使用 480×270（宽×高），即 270×480（高×宽）；
+    # 训练时 env_cfg 会把渲染分辨率降到 96×54（见 env_cfg.py），
+    # 因为最终观测只有 18×32，没必要渲染 480×270。
+    # 只渲染地形（geom group 0），避免机器人自身遮挡。
+    # quat 是对应旋转矩阵的 (w, x, y, z)。
+    depth_camera = CameraSensorCfg(
+      name="depth_camera",
+      parent_body="robot/base_link",
+      pos=(0.30, 0.0, 0.04),
+      quat=(0.579228, 0.40558, -0.40558, -0.579228),
+      fovy=60.0,
+      width=480,
+      height=270,
+      data_types=("depth",),
+      use_textures=False,
+      use_shadows=False,
+      enabled_geom_groups=(0,),
     )
 
     ##
@@ -184,6 +206,23 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         ),
       }
 
+    # 深度相机单独成组：原始 270×480（H×W）-> 裁剪/压缩/高斯模糊 -> 18×32，
+    # 保留 (num_envs, 1, 18, 32) 的 4D 形状给 CNN 编码器，
+    # 不与 actor 的 1D 观测拼接。actor 通过 rl_cfg 的 obs_groups 引用 "depth"。
+    depth_terms = {
+      "depth_image": ObservationTermCfg(
+        func=camera_depth,
+        params={
+          "sensor_name": "depth_camera",
+          "cutoff_distance": 5.0,
+          "target_height": 18,
+          "target_width": 32,
+          "blur_kernel_size": 3,
+          "blur_sigma": 0.8,
+        },
+      ),
+    }
+
     ##
     # RND (Random Network Distillation) 内在好奇心奖励输入
     ##
@@ -223,6 +262,12 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
         ),
         "critic": ObservationGroupCfg(
           terms=critic_terms,
+          concatenate_terms=True,
+          enable_corruption=False,
+        ),
+        # 深度相机组：4D 图像，交给 actor 的 CNN 编码器。
+        "depth": ObservationGroupCfg(
+          terms=depth_terms,
           concatenate_terms=True,
           enable_corruption=False,
         ),
@@ -462,8 +507,8 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       # Speed soft limit: zero below 0.5 m/s; exp((v-0.5)/e)-1 above.
       "speed_limit_penalty": RewardTermCfg(
         func=speed_limit_penalty,
-        weight=-0.1,
-        params={"max_speed": 1.0},
+        weight=-1.0,
+        params={"max_speed": 1.5},
       ),
       # 论文 Aggressive Motion: (|v_H| - 1)^2 * 1(|v_H| > 1)
       "aggressive_motion": RewardTermCfg(
@@ -593,7 +638,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
             max_init_terrain_level=0,
         ),
 
-        sensors=(terrain_scan,),
+        sensors=(terrain_scan, depth_camera),
         num_envs=1,
         extent=2.0,
       ),

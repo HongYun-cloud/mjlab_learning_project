@@ -33,6 +33,7 @@ for _name, _env_cfg in _TERRAINS.items():
         task_id=f"Mjlab-Tracking-{_name}-Teacher-Unitree-Go2",
         env_cfg=_env_cfg(),
         play_env_cfg=_env_cfg(play=True),
+        # LR symmetry data augmentation is enabled by default for all terrains.
         rl_cfg=my_go2_teacher_ppo_runner_cfg(),
         runner_cls=TrackOnPolicyRunner,
     )

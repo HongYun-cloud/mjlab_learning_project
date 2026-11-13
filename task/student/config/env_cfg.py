@@ -31,6 +31,9 @@ from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from myrobot_mjlab.task.student.tracking_env_cfg import make_velocity_env_cfg
 from mjlab.scene import SceneCfg
 from mjlab.terrains import TerrainEntityCfg
+from myrobot_mjlab.config.terrain.mixed_terrain import (
+    FLAT_STAIR_UP_TERRAINS_CFG,
+)
 from myrobot_mjlab.config.terrain.stair_terrain import (
     STAIRS_COMBINED_TERRAINS_CFG,
     STAIRS_DOWN_TERRAINS_CFG,
@@ -87,8 +90,13 @@ def _set_terrain_type(cfg: ManagerBasedRlEnvCfg, value: str) -> None:
       group.terms["terrain_type"].params["terrain_type"] = value
 
 
-def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
-  cfg = make_velocity_env_cfg()
+def my_go2_rough_env_cfg(
+  play: bool = False,
+  include_terrain_type_in_actor: bool = True,
+) -> ManagerBasedRlEnvCfg:
+  cfg = make_velocity_env_cfg(
+    include_terrain_type_in_actor=include_terrain_type_in_actor
+  )
 
   cfg.sim.mujoco.ccd_iterations = 500       # 当 MuJoCo 进行连续碰撞检测时，允许它最多迭代 500 次来求解碰撞
   cfg.sim.mujoco.impratio = 10              # 接触阻抗（impedance）中法向和切向方向的相对比例
@@ -352,9 +360,15 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   return cfg
 
-def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+def _make_stair_env_cfg(
+  play: bool = False,
+  include_terrain_type_in_actor: bool = True,
+) -> ManagerBasedRlEnvCfg:
   """Shared stair rewards / terminations / episode / command settings."""
-  cfg = my_go2_rough_env_cfg(play=play)
+  cfg = my_go2_rough_env_cfg(
+    play=play,
+    include_terrain_type_in_actor=include_terrain_type_in_actor,
+  )
 
   # 头部/躯干与地形的接触传感器：只用于终止，不进奖励。
   trunk_head_ground_cfg = ContactSensorCfg(
@@ -463,6 +477,58 @@ def my_go2_stair_up_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   if play:
     cfg.scene.num_envs = 1
     cfg.scene.terrain.max_init_terrain_level = 5
+  return cfg
+
+
+def my_go2_flat_stair_up_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Mixed flat + stair-up environment for two-teacher distillation.
+
+  - Terrain columns: 0 = flat, 1 = stair_up (see mixed_terrain.py).
+  - ``terrain_types`` is the per-env column index; the teacher group uses it
+    to route each env to the matching teacher.
+  - The student actor does NOT receive ``terrain_type``; the teacher critic
+    keeps the per-env one-hot as privileged information.
+  """
+  cfg = _make_stair_env_cfg(
+    play=play,
+    include_terrain_type_in_actor=False,
+  )
+
+  cfg.scene.terrain = TerrainEntityCfg(
+    terrain_type="generator",
+    terrain_generator=replace(FLAT_STAIR_UP_TERRAINS_CFG),
+    max_init_terrain_level=0,
+  )
+
+  # Both terrain patches are 12 x 12 m; leave a small safety margin.
+  cfg.terminations["out_of_patch_bounds"].params = {
+    "half_size": 5.8,
+    "margin": 0.2,
+  }
+
+  # Unified reset:
+  # - flat envs: _stair_total_height returns 0 -> spawn at patch center;
+  # - stair_up envs: spawn at the pyramid top.
+  cfg.events["reset_base"] = EventTermCfg(
+    func=reset_root_state_at_stair_top,
+    mode="reset",
+    params={
+      "target_distance": 3.8,
+      "nominal_height": 0.28,
+    },
+  )
+
+  cmd_goal = cfg.commands["Goal_direction"]
+  assert isinstance(cmd_goal, GoalDirectionCommandCfg)
+  cmd_goal.cardinal_directions = ("E", "N", "W", "S")
+  cmd_goal.target_distance = 3.8
+
+  if play:
+    cfg.scene.num_envs = 1
+    cfg.scene.terrain.max_init_terrain_level = 0
+
   return cfg
 
 

@@ -4,9 +4,11 @@ from enum import IntEnum
 from typing import TYPE_CHECKING
 
 import torch
+import torch.nn.functional as F
 
 from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+from mjlab.sensor import CameraSensor
 from mjlab.utils.lab_api.math import wrap_to_pi
 from myrobot_mjlab.config.reward.Trackingreward import _get_goal_pos
 
@@ -409,6 +411,96 @@ def time_left(
     return remaining.unsqueeze(-1)
 
 
+def _gaussian_blur_depth(
+    depth: torch.Tensor,
+    kernel_size: int,
+    sigma: float,
+) -> torch.Tensor:
+    """对 ``(B, 1, H, W)`` 深度图做可分离高斯模糊。"""
+    if kernel_size <= 1:
+        return depth
+
+    coords = torch.arange(
+        kernel_size, device=depth.device, dtype=depth.dtype
+    ) - (kernel_size - 1) / 2.0
+    g = torch.exp(-0.5 * (coords / max(sigma, 1e-6)) ** 2)
+    g = g / g.sum()
+
+    pad = kernel_size // 2
+    # 先横向再纵向；depth 只有 1 个通道，直接做 depthwise 卷积。
+    depth = F.conv2d(depth, g.view(1, 1, 1, -1), padding=(0, pad))
+    depth = F.conv2d(depth, g.view(1, 1, -1, 1), padding=(pad, 0))
+    return depth
+
+
+def camera_depth(
+    env: ManagerBasedRlEnv,
+    sensor_name: str,
+    cutoff_distance: float = 5.0,
+    min_depth: float = 0.01,
+    target_height: int = 18,
+    target_width: int = 32,
+    blur_kernel_size: int = 3,
+    blur_sigma: float = 0.8,
+) -> torch.Tensor:
+    """深度相机观测：裁剪 + 压缩 + 高斯模糊，输出 ``(B, 1, H, W)``。
+
+    原始深度图（例如 ``270×480``，即 ``H×W``）先做**中心裁剪**，裁掉
+    左右多余视野，使宽高比与目标一致；再用双线性插值**压缩**到目标分辨率
+    （默认 ``18×32``，即 ``H=18, W=32``）；最后做**高斯模糊**。
+
+    无效像素（天空 / 超出量程）在 MuJoCo 中为 0，处理前会按最远距离
+    ``cutoff_distance`` 填充，避免压缩/模糊后变成近处假障碍。最终深度被
+    裁剪到 ``[min_depth, cutoff_distance]`` 并归一化到 ``[0, 1]``。
+
+    Args:
+        sensor_name: 场景中 :class:`CameraSensorCfg` 的名称。
+        cutoff_distance: 最大有效深度（米），同时用于归一化。
+        min_depth: 最小有效深度（米），避免 0 深度导致后续网络输入退化。
+        target_height: 输出深度图高度 ``H``。
+        target_width: 输出深度图宽度 ``W``。
+        blur_kernel_size: 高斯核大小（奇数）；``<=1`` 时不做模糊。
+        blur_sigma: 高斯核标准差（以输出图像像素为单位）。
+    """
+    sensor = env.scene[sensor_name]
+    assert isinstance(sensor, CameraSensor)
+    depth = sensor.data.depth  # (num_envs, H, W, 1)
+    assert depth is not None, f"Camera '{sensor_name}' has no depth data"
+
+    depth = depth.permute(0, 3, 1, 2)  # (num_envs, 1, H, W)
+
+    # 无效像素按最远距离处理，避免模糊/压缩时污染邻近的有效深度。
+    depth = torch.where(
+        depth <= 0.0,
+        torch.full_like(depth, cutoff_distance),
+        depth,
+    )
+    depth = depth.clamp(min=min_depth, max=cutoff_distance)
+
+    # 1) 裁剪：按目标宽高比做中心裁剪（只裁宽度，保留完整高度）。
+    raw_height, raw_width = depth.shape[-2:]
+    crop_width = min(
+        raw_width,
+        max(1, round(raw_height * target_width / target_height)),
+    )
+    left = (raw_width - crop_width) // 2
+    depth = depth[..., left : left + crop_width]
+
+    # 2) 压缩：双线性插值到目标分辨率。
+    if depth.shape[-2:] != (target_height, target_width):
+        depth = F.interpolate(
+            depth,
+            size=(target_height, target_width),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+    # 3) 高斯模糊。
+    depth = _gaussian_blur_depth(depth, blur_kernel_size, blur_sigma)
+
+    return depth.clamp(min=min_depth, max=cutoff_distance) / cutoff_distance
+
+
 # ==============================================================================
 # Critic 特权观测项
 # ==============================================================================
@@ -461,6 +553,7 @@ __all__ = [
     "terrain_type",
     "direction_to_goal",
     "heading_to_goal_error",
+    "camera_depth",
     "base_height",
     "direction_real",
     "friction_coefficient",

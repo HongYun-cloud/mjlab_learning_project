@@ -63,6 +63,7 @@ from myrobot_mjlab.config.event.stair_waypoint import (
 )
 from myrobot_mjlab.config.reward.Trackingreward import (
   JointPowerBalancePenalty,
+  front_feet_too_close_penalty,
   goal_forward_bonus,
   stair_forward_speed_penalty,
   stair_waypoint_timeout,
@@ -274,7 +275,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     weight=-0.1,
     params={"sensor_name": "shank_ground_touch"},
   )
-
+  cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
   # 4. 终止条件：平地加入 fell_over、大腿触地 illegal_contact。
   cfg.terminations["fell_over"] = TerminationTermCfg(
     func=mdp.bad_orientation,
@@ -302,8 +303,6 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # 5. 平地步态与速度约束（目标速度设为 0.8 m/s，提升脚掌离地与站姿高度稳定性）
 
   cfg.rewards["track_target_bias"].params["speed_std"] = 0.25
-  if "air_time" in cfg.rewards:
-    cfg.rewards["air_time"].weight = 0.05
   if "pose" in cfg.rewards:
     cfg.rewards["pose"].weight = 1.0
     cfg.rewards["pose"].params["std"] = {
@@ -377,7 +376,7 @@ def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     params={"sensor_name": "shank_ground_touch"},
   )
   cfg.rewards["normal_pose"].distance_threshold = 0.25
-
+  cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
@@ -423,7 +422,7 @@ def _make_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # stair 专用：前向速度低于期望值时给温和惩罚；终点附近关闭。
   cfg.rewards["stair_speed_tracking"] = RewardTermCfg(
     func=stair_forward_speed_penalty,
-    weight=-0.1,
+    weight=-0.05,
     params={
       "command_name": "Goal_direction",
       "desired_speed": 0.8,
@@ -439,6 +438,7 @@ def my_go2_stair_up_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Up pyramid: spawn at the top center, target random E/W/N/S bottom side."""
   cfg = _make_stair_env_cfg(play=play)
   _set_terrain_type(cfg, "stair_up")
+  cfg.episode_length_s = 13
   cfg.scene.terrain = TerrainEntityCfg(
     terrain_type="generator",
     terrain_generator=replace(STAIRS_UP_TERRAINS_CFG),
@@ -471,6 +471,7 @@ def my_go2_stair_down_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Down pyramid: spawn at the low center, target random E/W/N/S top side."""
   cfg = _make_stair_env_cfg(play=play)
   _set_terrain_type(cfg, "stair_down")
+  cfg.episode_length_s = 13
   cfg.scene.terrain = TerrainEntityCfg(
     terrain_type="generator",
     terrain_generator=replace(STAIRS_DOWN_TERRAINS_CFG),
@@ -514,6 +515,7 @@ def my_go2_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Combined stair: up pyramid + 1m flat + down pyramid, 5 waypoints."""
   cfg = _make_stair_env_cfg(play=play)
   _set_terrain_type(cfg, "stair_combined")
+  cfg.episode_length_s = 13
   cfg.scene.terrain = TerrainEntityCfg(
     terrain_type="generator",
     terrain_generator=replace(STAIRS_COMBINED_TERRAINS_CFG),
@@ -613,6 +615,7 @@ def my_go2_stair_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 def my_go2_tire_env_cfg(
     play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
+  cfg.episode_length_s = 15
   cfg.scene.terrain = TerrainEntityCfg(
       terrain_type="generator",
       terrain_generator=replace(TIRE_ARRAY_TERRAINS_CFG),
@@ -830,6 +833,16 @@ def _apply_platform_like_config(
     params={"sensor_name": "shank_ground_touch"},
   )
 
+  # 前腿左右足端横向距离过近时惩罚，避免前腿并拢/交叉。
+  cfg.rewards["front_feet_too_close"] = RewardTermCfg(
+    func=front_feet_too_close_penalty,
+    weight=-0.5,
+    params={
+      "min_distance": 0.18,
+      "foot_body_names": ("FL_foot", "FR_foot"),
+    },
+  )
+
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
@@ -882,13 +895,13 @@ def _add_joint_power_balance(
 def my_go2_platform_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg = my_go2_rough_env_cfg(play=play)
   _set_terrain_type(cfg, "platform")
-
+  cfg.episode_length_s = 15
   cfg.scene.terrain = TerrainEntityCfg(
             terrain_type="generator",
             terrain_generator=replace(STEP_PLATFORM_TERRAINS_CFG),
             max_init_terrain_level=0,
         )
-
+  cfg.rewards["speed_limit_penalty"].params["max_speed"] = 1.5
   # Platform 的目标点在第二平台中心，方向必须沿地形行进方向固定，
   # 不能像 Stair 一样在四个基本方位里随机采样。
   platform_sub = next(
@@ -960,7 +973,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """
   cfg = my_go2_rough_env_cfg(play=play)
   _set_terrain_type(cfg, "plum")
-
+  cfg.episode_length_s = 15
   # 梅花桩地形有很多小桩，接触数量比普通地形大。
   cfg.sim.njmax = 300
   cfg.sim.contact_sensor_maxmatch = 64
@@ -978,6 +991,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     weight=-0.1,
     params={"sensor_name": "shank_ground_touch"},
   )
+  cfg.rewards.pop("speed_limit_penalty",None)
   # 2. 终止条件：大腿触地 illegal_contact，以及摔倒翻车限制 fell_over (70度)
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
@@ -1010,7 +1024,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["normal_pose"].params["distance_threshold"] = None
 
   # Plum 专项：终止惩罚和前期前进引导。
-  cfg.rewards["termination_penalty"].weight = -200.0
+  cfg.rewards["termination_penalty"].weight = -10.0
   cfg.rewards["track_target_position"].dense = True
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,
@@ -1091,7 +1105,7 @@ def my_go2_stones_2rows_env_cfg(
   """
   cfg = my_go2_rough_env_cfg(play=play)
   _set_terrain_type(cfg, "stone_2rows")
-
+  cfg.episode_length_s = 15
   cfg.sim.njmax = 300
   cfg.sim.contact_sensor_maxmatch = 64
   cfg.sim.nconmax = 128
@@ -1203,5 +1217,6 @@ def my_go2_low_clearance_bar_env_cfg(
   use the flat configuration until the real terrain is implemented.
   """
   cfg = my_go2_flat_env_cfg(play=play)
+  cfg.episode_length_s = 15
   _set_terrain_type(cfg, "low_clearance_bar")
   return cfg

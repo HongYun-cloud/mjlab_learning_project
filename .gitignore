@@ -26,6 +26,7 @@ wandb/
 swanlog/
 outputs/
 runs/
+depth_vis/
 
 # Model checkpoints and exported models
 *.pt

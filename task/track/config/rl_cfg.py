@@ -9,6 +9,22 @@ from mjlab.rl import (
 )
 
 
+# 深度相机使用独立的 2D 观测组，actor 用 CNN 编码器处理。
+# mjlab 的 SpatialSoftmaxCNNModel = CNN + spatial softmax，适合低分辨率深度图。
+_DEPTH_CNN_CFG = {
+    "output_channels": [16, 32],
+    "kernel_size": [5, 3],
+    "stride": [2, 2],
+    "padding": "zeros",
+    "activation": "elu",
+    "max_pool": False,
+    "global_pool": "none",
+    "spatial_softmax": True,
+    "spatial_softmax_temperature": 1.0,
+}
+_DEPTH_MODEL_CLS = "mjlab.rl.spatial_softmax:SpatialSoftmaxCNNModel"
+
+
 @dataclass
 class TrackPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
     """PPO config with the optional RSL-RL RND / symmetry extensions."""
@@ -28,15 +44,24 @@ class TrackPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
 def my_go2_ppo_runner_cfg(
     use_rnd: bool = True,
     use_symmetry: bool = True,
+    use_depth: bool = True,
 ) -> RslRlOnPolicyRunnerCfg:
     """Create RL runner configuration for the Track tasks.
 
     The two extensions are enabled by default.  Set ``use_rnd=False`` /
     ``use_symmetry=False`` to reproduce the plain PPO baseline.
+
+    ``use_depth=True`` feeds the forward-facing depth camera group into the
+    actor.  The depth group is a 2D image, so the actor switches to a CNN
+    encoder; set ``use_depth=False`` to keep the original MLP-only actor (the
+    camera sensor and depth group are still created by the environment but are
+    not consumed by the policy).
     """
 
     # RND sees the clean (s, a) group defined in tracking_env_cfg.py.
     obs_groups = {"actor": ("actor",), "critic": ("critic",)}
+    if use_depth:
+        obs_groups["actor"] = ("actor", "depth")
     if use_rnd:
         obs_groups["rnd_state"] = ("rnd_state",)
 
@@ -77,17 +102,22 @@ def my_go2_ppo_runner_cfg(
             mirror_loss_coeff=0.0,
         )
 
+    actor_kwargs = dict(
+        hidden_dims=(512, 256, 128),
+        activation="elu",
+        obs_normalization=True,
+        distribution_cfg={
+            "class_name": "GaussianDistribution",
+            "init_std": 1.0,
+            "std_type": "scalar",
+        },
+    )
+    if use_depth:
+        actor_kwargs["cnn_cfg"] = _DEPTH_CNN_CFG
+        actor_kwargs["class_name"] = _DEPTH_MODEL_CLS
+
     return RslRlOnPolicyRunnerCfg(
-        actor=RslRlModelCfg(
-            hidden_dims=(512, 256, 128),
-            activation="elu",
-            obs_normalization=True,
-            distribution_cfg={
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
-        ),
+        actor=RslRlModelCfg(**actor_kwargs),
         critic=RslRlModelCfg(
             hidden_dims=(512, 256, 128),
             activation="elu",

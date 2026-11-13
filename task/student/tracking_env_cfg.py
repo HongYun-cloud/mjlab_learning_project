@@ -81,7 +81,9 @@ from myrobot_mjlab.config.reward.Trackingreward import (
 )
 # 通用速度任务环境cfg
 
-def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
+def make_velocity_env_cfg(
+    include_terrain_type_in_actor: bool = True,
+) -> ManagerBasedRlEnvCfg:
 
     terrain_scan = RayCastSensorCfg(
       name="terrain_scan",
@@ -215,10 +217,18 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
       }
 
     ## enable_corruption 扰动开关
+    # 混合地形任务可以让 student 不吃 terrain_type，只靠 height_scan 推断地形；
+    # teacher 的 critic 组仍保留 terrain_type 作为特权信息。
+    student_terms = (
+        actor_terms
+        if include_terrain_type_in_actor
+        else {k: v for k, v in actor_terms.items() if k != "terrain_type"}
+    )
+
     observations = {
         # 学生 actor 是部署观测，训练时开启噪声；critic / rnd 保持干净。
         "actor": ObservationGroupCfg(
-          terms=actor_terms,
+          terms=student_terms,
           concatenate_terms=True,
           enable_corruption=True,
         ),

@@ -7,7 +7,7 @@
 #   ./train/train_student.sh <run_name> -e <terrain> [-t <teacher_checkpoint>] [-p <student_run>] [-m <student_model>]
 #
 # terrain:
-#   flat | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
+#   flat | flat_stair_up | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
 #
 # -t: 教师 PPO checkpoint（文件或目录；目录时取最新的 *.pt）
 #     不指定时使用 task/student/config/teachers.py 里的注册路径。
@@ -16,7 +16,7 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat stair stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat flat_stair_up stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 TEACHER_CHECKPOINT=""
 TEACHER_ARG_GIVEN=0
@@ -58,6 +58,7 @@ TERRAIN="${TERRAIN//-/_}"
 
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
+    flat_stair_up|flatstairup|mixed) SUFFIX="FlatStairUp" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
     stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
     stair_down|stairdown|down) SUFFIX="StairDown" ;;
@@ -91,7 +92,12 @@ if [[ -n "$TEACHER_CHECKPOINT" && ! -f "$TEACHER_CHECKPOINT" ]]; then
 fi
 
 TEACHER_ARGS=()
-if [[ -n "$TEACHER_CHECKPOINT" ]]; then
+if [[ "$SUFFIX" == "FlatStairUp" ]]; then
+    if [[ -n "$TEACHER_CHECKPOINT" ]]; then
+        echo "提示：FlatStairUp 使用 teachers.py 中的 flat/stair_up 两个教师，-t 会被忽略。"
+    fi
+    echo "提示：FlatStairUp 的教师来自 task/student/config/teachers.py。"
+elif [[ -n "$TEACHER_CHECKPOINT" ]]; then
     TEACHER_ARGS=(--agent.teacher-checkpoint "$TEACHER_CHECKPOINT")
 else
     echo "提示：未指定 -t，将使用 task/student/config/teachers.py 中的教师路径。"

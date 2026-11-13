@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from mjlab.entity import Entity
 from mjlab.managers.scene_entity_config import SceneEntityCfg
-from mjlab.utils.lab_api.math import euler_xyz_from_quat, wrap_to_pi
+from mjlab.utils.lab_api.math import euler_xyz_from_quat, quat_apply, wrap_to_pi
 
 if TYPE_CHECKING:
     from mjlab.envs import ManagerBasedRlEnv
@@ -658,6 +658,46 @@ def goal_four_foot_contact_penalty(
     goal_pos = _get_goal_pos(env, command_name=command_name)[:, :2]
     dist = torch.linalg.norm(goal_pos - robot_pos, dim=-1)
     return ((dist < distance_threshold) & (count < min_contacts)).float()
+
+
+def front_feet_too_close_penalty(
+    env: ManagerBasedRlEnv,
+    min_distance: float = 0.18,
+    foot_body_names: tuple[str, str] = ("FL_foot", "FR_foot"),
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+    **kwargs,
+) -> torch.Tensor:
+    r"""Penalize the front left/right feet being too close laterally.
+
+    The separation is measured along the body lateral (+Y) axis, so the
+    penalty is independent of the robot's yaw/roll.  For a pair of feet
+    ``FL_foot`` and ``FR_foot``:
+
+        lateral = |(p_FL - p_FR) · y_body|
+        penalty = max(min_distance - lateral, 0)
+
+    The reward term is expected to have a negative weight.
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    body_names = list(asset.body_names)
+    try:
+        left_id = body_names.index(foot_body_names[0])
+        right_id = body_names.index(foot_body_names[1])
+    except ValueError as exc:
+        raise ValueError(
+            f"front_feet_too_close_penalty cannot find foot bodies "
+            f"{foot_body_names} in {body_names}"
+        ) from exc
+
+    foot_pos = asset.data.body_link_pos_w[:, [left_id, right_id], :]
+    delta = foot_pos[:, 0, :] - foot_pos[:, 1, :]
+
+    body_y = torch.zeros_like(delta)
+    body_y[:, 1] = 1.0
+    body_y = quat_apply(asset.data.root_link_quat_w, body_y)
+    lateral = torch.abs(torch.sum(delta * body_y, dim=-1))
+
+    return torch.clamp(min_distance - lateral, min=0.0)
 
 
 def collision_penalty(

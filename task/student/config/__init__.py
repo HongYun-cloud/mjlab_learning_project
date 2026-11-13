@@ -4,6 +4,7 @@ from mjlab.tasks.registry import register_mjlab_task
 
 from .env_cfg import (
     my_go2_flat_env_cfg,
+    my_go2_flat_stair_up_env_cfg,
     my_go2_low_clearance_bar_env_cfg,
     my_go2_platform_env_cfg,
     my_go2_plum_env_cfg,
@@ -15,7 +16,10 @@ from .env_cfg import (
 )
 from .multi_teacher import MultiTeacherDistillationRunner
 from .rl_cfg import my_go2_multi_teacher_distill_cfg
-from .teachers import TEACHER_CHECKPOINTS
+from .teachers import (
+    TEACHER_CHECKPOINTS,
+    TEACHER_CHECKPOINTS_FLAT_STAIR_UP,
+)
 
 _TERRAINS = {
     "Flat": my_go2_flat_env_cfg,
@@ -40,5 +44,18 @@ for _name, _env_cfg in _TERRAINS.items():
         ),
         runner_cls=MultiTeacherDistillationRunner,
     )
+
+# Mixed flat + stair_up task: one student, two teachers, per-env routing.
+register_mjlab_task(
+    task_id="Mjlab-Tracking-FlatStairUp-Student-Unitree-Go2",
+    env_cfg=my_go2_flat_stair_up_env_cfg(),
+    play_env_cfg=my_go2_flat_stair_up_env_cfg(play=True),
+    rl_cfg=my_go2_multi_teacher_distill_cfg(
+        terrain_key="FlatStairUp",
+        teachers=TEACHER_CHECKPOINTS_FLAT_STAIR_UP,
+        multi_teacher=True,
+    ),
+    runner_cls=MultiTeacherDistillationRunner,
+)
 
 __all__ = ["_TERRAINS"]

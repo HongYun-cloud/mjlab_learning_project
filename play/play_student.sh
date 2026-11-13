@@ -12,7 +12,7 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat stair stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat flat_stair_up stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 CHECKPOINT=""
 ARGS=()
@@ -52,6 +52,7 @@ TERRAIN="${TERRAIN//-/_}"
 
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
+    flat_stair_up|flatstairup|mixed) SUFFIX="FlatStairUp" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
     stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
     stair_down|stairdown|down) SUFFIX="StairDown" ;;

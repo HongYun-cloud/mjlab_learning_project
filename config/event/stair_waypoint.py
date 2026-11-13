@@ -156,25 +156,17 @@ def _stair_total_height(
     env: ManagerBasedRlEnv,
     env_ids: torch.Tensor,
 ) -> torch.Tensor:
-    """按当前地形难度计算单段金字塔的总高度 H。"""
+    """按当前地形难度计算每个 env 所在金字塔的总高度 H。
+
+    混合地形里同一批 env 可能分布在 flat 和 stair_up 两列：
+    - flat 列没有 ``step_height_range``，高度返回 0；
+    - stair 列按自己的 sub-terrain 参数和 terrain level 计算。
+    单地形 stair 任务仍然走同一条路径（只有一列）。
+    """
     terrain = getattr(env.scene, "terrain", None)
     generator = getattr(getattr(terrain, "cfg", None), "terrain_generator", None)
     if generator is None:
         return torch.zeros(len(env_ids), device=env.device)
-
-    sub_cfg = next(iter(generator.sub_terrains.values()))
-    size = getattr(sub_cfg, "up_size", None)
-    if size is None:
-        size = getattr(sub_cfg, "pyramid_size", sub_cfg.size)
-    num_steps_x = int(
-        (size[0] - 2 * sub_cfg.border_width - sub_cfg.platform_width)
-        / (2 * sub_cfg.step_width)
-    )
-    num_steps_y = int(
-        (size[1] - 2 * sub_cfg.border_width - sub_cfg.platform_width)
-        / (2 * sub_cfg.step_width)
-    )
-    num_steps = max(0, min(num_steps_x, num_steps_y))
 
     levels = terrain.terrain_levels[env_ids].float()
     num_rows = max(int(terrain.terrain_origins.shape[0]), 1)
@@ -182,9 +174,37 @@ def _stair_total_height(
     low, high = generator.difficulty_range
     difficulty = low + t * (high - low)
 
-    step_low, step_high = sub_cfg.step_height_range
-    step_height = step_low + difficulty * (step_high - step_low)
-    return (num_steps + 1) * step_height
+    terrain_types = terrain.terrain_types[env_ids]
+    total_height = torch.zeros(len(env_ids), device=env.device)
+
+    for col, sub_cfg in enumerate(generator.sub_terrains.values()):
+        mask = terrain_types == col
+        if not mask.any():
+            continue
+
+        step_range = getattr(sub_cfg, "step_height_range", None)
+        if step_range is None:
+            # flat / non-stair column
+            continue
+
+        size = getattr(sub_cfg, "up_size", None)
+        if size is None:
+            size = getattr(sub_cfg, "pyramid_size", sub_cfg.size)
+        num_steps_x = int(
+            (size[0] - 2 * sub_cfg.border_width - sub_cfg.platform_width)
+            / (2 * sub_cfg.step_width)
+        )
+        num_steps_y = int(
+            (size[1] - 2 * sub_cfg.border_width - sub_cfg.platform_width)
+            / (2 * sub_cfg.step_width)
+        )
+        num_steps = max(0, min(num_steps_x, num_steps_y))
+
+        step_low, step_high = step_range
+        step_height = step_low + difficulty[mask] * (step_high - step_low)
+        total_height[mask] = (num_steps + 1) * step_height
+
+    return total_height
 
 
 def _set_height_command_ground_z(

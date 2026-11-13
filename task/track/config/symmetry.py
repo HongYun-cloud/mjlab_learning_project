@@ -72,6 +72,11 @@ _FOOT_TERMS = {
     "foot_contact_forces",
 }
 
+# 图像类观测组（如深度相机）。这些组不是 1D 拼接向量，按图像方式镜像。
+_IMAGE_GROUPS = {
+    "depth",
+}
+
 
 def _joint_swap_map(
     names: list[str] | tuple[str, ...], mode: MirrorMode
@@ -144,6 +149,10 @@ def _term_slices(env) -> tuple[dict[str, dict[str, slice]], dict[str, int]]:
     sizes: dict[str, int] = {}
     for group, term_names in manager.active_terms.items():
         dims = manager.group_obs_term_dim[group]
+        if group in _IMAGE_GROUPS or any(len(dim) != 1 for dim in dims):
+            # 图像组（或其它多维组）在 _mirror_obs_groups 中单独处理，
+            # 这里只构建 1D 拼接观测项的切片布局。
+            continue
         term_slices: dict[str, slice] = {}
         offset = 0
         for name, dim in zip(term_names, dims, strict=False):
@@ -378,6 +387,20 @@ def _augment(
     return obs_aug, torch.cat(action_list, dim=0)
 
 
+def _mirror_image(value: torch.Tensor, mode: MirrorMode) -> torch.Tensor:
+    """镜像图像观测组，输入形状 ``(B, C, H, W)``。
+
+    前视相机的左右镜像等价于水平翻转图像。前后镜像需要相机能看到后方，
+    当前前视相机做不到，因此只支持 ``lr``。
+    """
+    if mode != "lr":
+        raise ValueError(
+            "Depth-camera observations only support left-right mirroring; "
+            "front-back mirroring would require a rear-facing camera."
+        )
+    return torch.flip(value, dims=(-1,))
+
+
 def _mirror_obs_groups(
     obs,
     layout: dict[str, dict[str, slice]],
@@ -389,6 +412,9 @@ def _mirror_obs_groups(
 ):
     result = {}
     for group in obs.keys():
+        if group in _IMAGE_GROUPS:
+            result[group] = _mirror_image(obs[group], mode)
+            continue
         if group not in layout:
             # Unknown auxiliary groups are copied through unchanged.
             result[group] = obs[group]

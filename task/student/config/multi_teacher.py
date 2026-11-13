@@ -1,26 +1,45 @@
 """Multi-teacher distillation runner.
 
-The student model is shared across student tasks.  Each task selects a teacher
-checkpoint from the ``teachers`` registry using its ``terrain_key``.  For the
-current per-terrain tasks only one teacher is active at a time; when the
-terrains are merged into one environment, this runner can be extended to route
-per-env teacher ids to simultaneous teacher models.
+Two modes are supported:
+
+- legacy single-teacher mode (``multi_teacher=False``): pick one checkpoint
+  from the ``teachers`` registry by ``terrain_key``;
+- per-env routing mode (``multi_teacher=True``): load every registry entry,
+  keyed by sub-terrain name, and route each env to the teacher matching its
+  ``terrain_types`` column.
+
+Adding a new teacher only requires a new sub-terrain and a new registry entry;
+the routing module and distillation loop do not change.
 """
 
 from __future__ import annotations
 
+import copy
+
+import torch
 from rsl_rl.runners import DistillationRunner
+from rsl_rl.utils import resolve_callable
+
+from .teacher_group import TeacherGroup
 
 
 class MultiTeacherDistillationRunner(DistillationRunner):
-    """Distillation runner that loads a teacher from a terrain registry."""
+    """Distillation runner with optional per-env teacher routing.
+
+    ``multi_teacher=False`` keeps the legacy behavior: one teacher selected by
+    ``terrain_key``.  ``multi_teacher=True`` loads every checkpoint in
+    ``teachers`` (keyed by sub-terrain name) and routes each env to the
+    teacher matching its terrain column.
+    """
 
     def __init__(self, env, train_cfg: dict, log_dir: str | None = None, device: str = "cpu"):
+        self._multi_teacher = bool(train_cfg.get("multi_teacher", False))
         self._terrain_key = str(train_cfg.get("terrain_key", ""))
-        teachers = train_cfg.get("teachers") or {}
+        self._teachers = dict(train_cfg.get("teachers") or {})
+
         teacher_checkpoint = train_cfg.get("teacher_checkpoint")
         if not teacher_checkpoint:
-            teacher_checkpoint = teachers.get(self._terrain_key)
+            teacher_checkpoint = self._teachers.get(self._terrain_key)
         self._teacher_checkpoint = teacher_checkpoint
 
         # rsl_rl MLPModel does not accept the optional mjlab model fields when
@@ -34,9 +53,20 @@ class MultiTeacherDistillationRunner(DistillationRunner):
                     for opt in ("rnn_type", "rnn_hidden_dim", "rnn_num_layers"):
                         train_cfg[key].pop(opt, None)
 
+        # Keep a pristine copy before construct_algorithm pops class_name /
+        # distribution class_name from the live config.
+        self._teacher_template = copy.deepcopy(train_cfg.get("teacher", {}))
+
         super().__init__(env, train_cfg, log_dir, device)
 
-        if self._teacher_checkpoint:
+        if self._multi_teacher:
+            if log_dir is not None:
+                self._install_teacher_group(env, train_cfg, device)
+            else:
+                # Playback only needs the student policy.
+                print("[MultiTeacher] play mode: skipping teacher loading")
+                self.alg.teacher_loaded = True
+        elif self._teacher_checkpoint:
             print(
                 f"[MultiTeacher] loading teacher for terrain "
                 f"'{self._terrain_key}': {self._teacher_checkpoint}"
@@ -53,6 +83,81 @@ class MultiTeacherDistillationRunner(DistillationRunner):
                 f"'{self._terrain_key}'. Fill task/student/config/teachers.py "
                 "or pass --agent.teacher-checkpoint."
             )
+
+    def _install_teacher_group(self, env, train_cfg: dict, device: str) -> None:
+        """Build one teacher per sub-terrain and install a routing module."""
+        if not self._teachers:
+            raise ValueError(
+                "multi_teacher=True but 'teachers' is empty. "
+                "Fill task/student/config/teachers.py."
+            )
+
+        obs = env.get_observations()
+        template = copy.deepcopy(self._teacher_template)
+        teacher_cls = resolve_callable(template.pop("class_name"))
+
+        teachers = {}
+        for key, path in self._teachers.items():
+            if not path:
+                raise ValueError(
+                    f"No teacher checkpoint configured for terrain '{key}'. "
+                    "Fill task/student/config/teachers.py."
+                )
+
+            cfg = copy.deepcopy(template)
+            model = teacher_cls(
+                obs,
+                train_cfg["obs_groups"],
+                "teacher",
+                env.num_actions,
+                **cfg,
+            )
+
+            ckpt = torch.load(path, map_location="cpu", weights_only=False)
+            state = ckpt.get("actor_state_dict")
+            if state is None:
+                raise KeyError(
+                    f"Teacher checkpoint '{path}' has no 'actor_state_dict'. "
+                    "Expected a PPO teacher checkpoint."
+                )
+            model.load_state_dict(state, strict=True)
+            model.eval()
+            for p in model.parameters():
+                p.requires_grad_(False)
+            teachers[key] = model
+            print(f"[MultiTeacher] loaded teacher '{key}': {path}")
+
+        terrain = getattr(env.unwrapped.scene, "terrain", None)
+        generator = getattr(
+            getattr(terrain, "cfg", None), "terrain_generator", None
+        )
+        if terrain is None or generator is None:
+            raise ValueError(
+                "multi_teacher=True requires a terrain generator with "
+                "per-env terrain_types."
+            )
+
+        sub_keys = list(generator.sub_terrains.keys())
+        if set(sub_keys) != set(teachers):
+            raise ValueError(
+                "Teacher keys must match sub_terrains keys. "
+                f"sub_terrains={sub_keys}, teachers={list(teachers.keys())}"
+            )
+
+        id_to_key = {i: key for i, key in enumerate(sub_keys)}
+
+        def id_getter() -> torch.Tensor:
+            # Read every forward so per-episode terrain randomization works.
+            return terrain.terrain_types
+
+        group = TeacherGroup(teachers, id_to_key, id_getter).to(device)
+        self.alg.teacher = group
+        self.alg._raw_teacher = group
+        self.alg.teacher_loaded = True
+        print(
+            f"[MultiTeacher] routing {len(teachers)} teachers by terrain_types: "
+            f"{id_to_key}"
+        )
 
     def save(self, path: str, infos: dict | None = None) -> None:
         env_state = {

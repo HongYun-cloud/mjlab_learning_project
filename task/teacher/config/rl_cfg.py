@@ -27,14 +27,15 @@ class TrackPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
 
 def my_go2_teacher_ppo_runner_cfg(
     use_rnd: bool = False,
-    use_symmetry: bool = False,
+    use_symmetry: bool = True,
 ) -> RslRlOnPolicyRunnerCfg:
     """Create the privileged teacher PPO runner configuration.
 
     The teacher environment's actor group is already the privileged critic
     observation set, so the actor/critic mappings here are the normal ones.
-    RND and symmetry are disabled by default; enable them explicitly if the
-    privileged observation set supports the symmetry rules.
+    RND is disabled by default. Left-right symmetry augmentation is enabled by
+    default for every teacher terrain. Only LR mirroring is used; front-back
+    mirroring is not valid for the stair/platform layouts.
     """
 
     # RND sees the clean (s, a) group defined in tracking_env_cfg.py.

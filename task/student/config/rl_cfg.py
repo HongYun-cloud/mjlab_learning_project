@@ -26,11 +26,10 @@ class MultiTeacherDistillationAlgorithmCfg:
 class MultiTeacherDistillationRunnerCfg(RslRlBaseRunnerCfg):
     """Student/teacher observation split and teacher registry.
 
-    ``teachers`` maps a terrain task key to a teacher PPO checkpoint.
-    ``terrain_key`` selects the teacher used by this student task.  The
-    student model is shared by using the same student checkpoint/config across
-    tasks; true simultaneous multi-terrain routing is left for the combined
-    terrain task.
+    ``multi_teacher=False``: ``terrain_key`` selects one teacher checkpoint.
+    ``multi_teacher=True``: ``teachers`` is keyed by sub-terrain name and each
+    env is routed to the teacher matching its ``terrain_types`` column.  The
+    student model is shared across all envs.
     """
 
     class_name: str = "MultiTeacherDistillationRunner"
@@ -77,6 +76,8 @@ class MultiTeacherDistillationRunnerCfg(RslRlBaseRunnerCfg):
     )
     terrain_key: str = ""
     teacher_checkpoint: str | None = None
+    multi_teacher: bool = False
+    """If True, load all ``teachers`` and route per env by terrain column."""
 
     experiment_name: str = "go2_velocity"
     save_interval: int = 50
@@ -88,12 +89,30 @@ def my_go2_multi_teacher_distill_cfg(
     terrain_key: str,
     teachers: dict[str, str] | None = None,
     teacher_checkpoint: str | None = None,
+    multi_teacher: bool = False,
 ) -> MultiTeacherDistillationRunnerCfg:
-    """Create a student task config for one terrain teacher."""
+    """Create a student task config.
+
+    With ``multi_teacher=False`` this is the legacy single-teacher setup.
+    With ``multi_teacher=True`` the ``teachers`` dict is keyed by sub-terrain
+    name and every env is routed to its matching teacher.
+    """
     cfg = MultiTeacherDistillationRunnerCfg()
     cfg.terrain_key = terrain_key
     cfg.teachers = dict(teachers or TEACHER_CHECKPOINTS)
-    if teacher_checkpoint is None:
-        teacher_checkpoint = cfg.teachers.get(terrain_key) or None
-    cfg.teacher_checkpoint = teacher_checkpoint
+    cfg.multi_teacher = multi_teacher
+
+    if multi_teacher:
+        # Teachers are external; never restore them from the student
+        # checkpoint, and do not use the single-checkpoint override.
+        cfg.teacher_checkpoint = None
+        cfg.algorithm.class_name = (
+            "myrobot_mjlab.task.student.config.routed_distillation:"
+            "RoutedDistillation"
+        )
+    else:
+        if teacher_checkpoint is None:
+            teacher_checkpoint = cfg.teachers.get(terrain_key) or None
+        cfg.teacher_checkpoint = teacher_checkpoint
+
     return cfg

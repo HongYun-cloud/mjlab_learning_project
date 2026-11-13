@@ -64,7 +64,7 @@ train_parse_args "${ARGS[@]}"
 TASK="Mjlab-Tracking-${SUFFIX}-Teacher-Unitree-Go2"
 PROJECT="track_teacher"
 NUM_ENVS=512
-MAX_ITERATIONS=5000
+MAX_ITERATIONS=2000
 
 echo "======================================"
 echo "       Go2 Teacher Training"

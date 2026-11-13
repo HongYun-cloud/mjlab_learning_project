@@ -79,6 +79,14 @@ from mjlab.managers.command_manager import CommandTermCfg
 import traceback
 
 
+# 深度相机训练分辨率。480×270 只用于 play / 可视化；训练时观测最终会被
+# 压到 18×32，因此按 3 倍目标分辨率渲染（96×54）即可，渲染像素少 25 倍。
+# 需要恢复全分辨率训练时：
+#   MYROBOT_DEPTH_TRAIN_WIDTH=480 MYROBOT_DEPTH_TRAIN_HEIGHT=270 ./train/...
+_DEPTH_TRAIN_WIDTH = int(os.getenv("MYROBOT_DEPTH_TRAIN_WIDTH", "96"))
+_DEPTH_TRAIN_HEIGHT = int(os.getenv("MYROBOT_DEPTH_TRAIN_HEIGHT", "54"))
+
+
 def _set_terrain_type(cfg: ManagerBasedRlEnvCfg, value: str) -> None:
   """Set the terrain_type observation explicitly in actor and critic groups."""
   for group_name in ("actor", "critic"):
@@ -89,6 +97,14 @@ def _set_terrain_type(cfg: ManagerBasedRlEnvCfg, value: str) -> None:
 
 def my_go2_rough_env_cfg(play: bool = False,) -> ManagerBasedRlEnvCfg:
   cfg = make_velocity_env_cfg()
+
+  # 训练时降低深度相机渲染分辨率；play 保留 480x270 供可视化。
+  if not play:
+    for sensor_cfg in cfg.scene.sensors or ():
+      if sensor_cfg.name == "depth_camera":
+        sensor_cfg.width = _DEPTH_TRAIN_WIDTH
+        sensor_cfg.height = _DEPTH_TRAIN_HEIGHT
+        break
 
   cfg.sim.mujoco.ccd_iterations = 500       # 当 MuJoCo 进行连续碰撞检测时，允许它最多迭代 500 次来求解碰撞
   cfg.sim.mujoco.impratio = 10              # 接触阻抗（impedance）中法向和切向方向的相对比例

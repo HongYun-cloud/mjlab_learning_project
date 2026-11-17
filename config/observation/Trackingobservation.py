@@ -91,6 +91,10 @@ _TERRAIN_TYPE_ALIASES: dict[str, TerrainType] = {
     "trench": TerrainType.PLATFORM,
     "gap": TerrainType.PLATFORM,
     "沟壑": TerrainType.PLATFORM,
+    # Composite competition map (flat + stairs + platform + stones).
+    "half_competition_map": TerrainType.PLATFORM,
+    "halfcompetitionmap": TerrainType.PLATFORM,
+    "competition_map": TerrainType.PLATFORM,
     "single_beam": TerrainType.SINGLE_BEAM,
     "beam": TerrainType.SINGLE_BEAM,
     "single_wooden_beam": TerrainType.SINGLE_BEAM,
@@ -515,6 +519,29 @@ def base_height(
     return pos_z
 
 
+def height_error(
+    env: ManagerBasedRlEnv,
+    command_name: str = "Base_height_target",
+    asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
+) -> torch.Tensor:
+    """目标机身高度 - 当前机身高度. Shape: (num_envs, 1).
+
+    ``Base_height_target`` 是目标位置的地面高度 + nominal_height；
+    当前机身高度与它使用相同的 env-origin 坐标口径。
+    """
+    if command_name not in env.command_manager.active_terms:
+        return torch.zeros((env.num_envs, 1), device=env.device)
+
+    asset: Entity = env.scene[asset_cfg.name]
+    target_z = env.command_manager.get_command(command_name)
+    if target_z.ndim > 1:
+        target_z = target_z.squeeze(-1)
+    base_z = (
+        asset.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
+    )
+    return (target_z - base_z).unsqueeze(-1)
+
+
 def direction_real(
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
@@ -555,6 +582,7 @@ __all__ = [
     "heading_to_goal_error",
     "camera_depth",
     "base_height",
+    "height_error",
     "direction_real",
     "friction_coefficient",
 ]

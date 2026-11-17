@@ -15,10 +15,15 @@ the routing module and distillation loop do not change.
 from __future__ import annotations
 
 import copy
+import os
+from pathlib import Path
 
 import torch
+import wandb
 from rsl_rl.runners import DistillationRunner
 from rsl_rl.utils import resolve_callable
+
+from mjlab.rl.exporter_utils import attach_metadata_to_onnx, get_base_metadata
 
 from .teacher_group import TeacherGroup
 
@@ -59,13 +64,12 @@ class MultiTeacherDistillationRunner(DistillationRunner):
 
         super().__init__(env, train_cfg, log_dir, device)
 
-        if self._multi_teacher:
-            if log_dir is not None:
-                self._install_teacher_group(env, train_cfg, device)
-            else:
-                # Playback only needs the student policy.
-                print("[MultiTeacher] play mode: skipping teacher loading")
-                self.alg.teacher_loaded = True
+        if log_dir is None:
+            # Playback only needs the student policy; teachers are training-only.
+            print("[MultiTeacher] play mode: skipping teacher loading")
+            self.alg.teacher_loaded = True
+        elif self._multi_teacher:
+            self._install_teacher_group(env, train_cfg, device)
         elif self._teacher_checkpoint:
             print(
                 f"[MultiTeacher] loading teacher for terrain "
@@ -78,10 +82,11 @@ class MultiTeacherDistillationRunner(DistillationRunner):
                 map_location=device,
             )
         else:
-            print(
-                f"[MultiTeacher] no teacher checkpoint configured for terrain "
-                f"'{self._terrain_key}'. Fill task/student/config/teachers.py "
-                "or pass --agent.teacher-checkpoint."
+            raise ValueError(
+                f"No teacher checkpoint configured for terrain "
+                f"'{self._terrain_key}'. Fill "
+                "task/student/config/teachers.py or pass "
+                "--agent.teacher-checkpoint."
             )
 
     def _install_teacher_group(self, env, train_cfg: dict, device: str) -> None:
@@ -158,6 +163,77 @@ class MultiTeacherDistillationRunner(DistillationRunner):
             f"[MultiTeacher] routing {len(teachers)} teachers by terrain_types: "
             f"{id_to_key}"
         )
+
+    @staticmethod
+    def _get_export_paths(checkpoint_path: str) -> tuple[Path, str, Path]:
+        """Resolve ONNX export paths from a checkpoint path."""
+        export_dir = Path(checkpoint_path).parent
+        filename = f"{export_dir.name}.onnx"
+        return export_dir, filename, export_dir / filename
+
+    def export_policy_to_onnx(
+        self, path: str, filename: str = "policy.onnx", verbose: bool = False
+    ) -> None:
+        """Export the student policy to ONNX."""
+        onnx_model = self.alg.get_policy().as_onnx(verbose=verbose)
+        onnx_model.to("cpu")
+        onnx_model.eval()
+        os.makedirs(path, exist_ok=True)
+        torch.onnx.export(
+            onnx_model,
+            onnx_model.get_dummy_inputs(),  # type: ignore[operator]
+            os.path.join(path, filename),
+            export_params=True,
+            opset_version=18,
+            verbose=verbose,
+            input_names=onnx_model.input_names,  # type: ignore[arg-type]
+            output_names=onnx_model.output_names,  # type: ignore[arg-type]
+            dynamic_axes={},
+            dynamo=False,
+        )
+
+    def learn(
+        self,
+        num_learning_iterations: int,
+        init_at_random_ep_len: bool = False,
+    ) -> None:
+        super().learn(num_learning_iterations, init_at_random_ep_len)
+        # Export ONNX once, after the final update, instead of on every
+        # periodic checkpoint save.
+        self.export_final_onnx()
+
+    def export_final_onnx(self) -> None:
+        """Export the final student policy to the run directory."""
+        log_dir = getattr(self.logger, "log_dir", None)
+        if log_dir is None:
+            return
+
+        policy_dir = Path(log_dir)
+        filename = f"{policy_dir.name}.onnx"
+        onnx_path = policy_dir / filename
+        try:
+            self.export_policy_to_onnx(str(policy_dir), filename)
+            run_name: str = (
+                wandb.run.name
+                if self.logger.logger_type in ("wandb", "WandbLogWriter")
+                and wandb.run
+                else policy_dir.name
+            )
+            metadata = get_base_metadata(self.env.unwrapped, run_name)
+            attach_metadata_to_onnx(str(onnx_path), metadata)
+        except Exception as e:
+            print(f"[WARN] final ONNX export failed (training continues): {e}")
+            return
+
+        print(f"[ONNX] exported final student policy: {onnx_path}")
+        if (
+            self.logger.logger_type in ("wandb", "WandbLogWriter")
+            and self.cfg["upload_model"]
+        ):
+            try:
+                wandb.save(str(onnx_path), base_path=str(policy_dir))
+            except Exception as e:
+                print(f"[WARN] wandb ONNX upload skipped: {e}")
 
     def save(self, path: str, infos: dict | None = None) -> None:
         env_state = {

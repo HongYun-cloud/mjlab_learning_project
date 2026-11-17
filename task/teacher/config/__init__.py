@@ -13,11 +13,23 @@ from .env_cfg import (
     my_go2_stones_2rows_env_cfg,
     my_go2_tire_env_cfg,
 )
+from .mutitask_env_cfg import (
+    my_go2_flat_platform_stair_down_env_cfg,
+    my_go2_flat_platform_stair_down_plum_env_cfg,
+    my_go2_flat_stair_down_env_cfg,
+    my_go2_flat_stair_down_stones_2rows_env_cfg,
+    my_go2_half_competition_map_env_cfg,
+)
 from .rl_cfg import my_go2_teacher_ppo_runner_cfg
 from .runner import TrackOnPolicyRunner
 
 _TERRAINS = {
     "Flat": my_go2_flat_env_cfg,
+    "FlatPlatformStairDown": my_go2_flat_platform_stair_down_env_cfg,
+    "FlatPlatformStairDownPlum": my_go2_flat_platform_stair_down_plum_env_cfg,
+    "FlatStairDown": my_go2_flat_stair_down_env_cfg,
+    "FlatStairDownStones2Rows": my_go2_flat_stair_down_stones_2rows_env_cfg,
+    "HalfCompetitionMap": my_go2_half_competition_map_env_cfg,
     "Stair": my_go2_stair_env_cfg,
     "StairUp": my_go2_stair_up_env_cfg,
     "StairDown": my_go2_stair_down_env_cfg,

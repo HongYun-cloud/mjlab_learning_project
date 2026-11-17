@@ -7,6 +7,7 @@ import mujoco
 import numpy as np
 
 from mjlab.terrains.terrain_generator import (
+    FlatPatchSamplingCfg,
     SubTerrainCfg,
     TerrainGeneratorCfg,
     TerrainGeometry,
@@ -362,6 +363,11 @@ PLUM_BLOSSOM_FIELD_TERRAINS_CFG = TerrainGeneratorCfg(
             proportion=1.0,
             field_size=(6.60, 6.60),
             flat_border_width=2.0,
+            flat_patch_sampling={
+                "goal": FlatPatchSamplingCfg(
+                    num_patches=1, patch_radius=0.5
+                ),
+            },
         ),
     },
     add_lights=True,

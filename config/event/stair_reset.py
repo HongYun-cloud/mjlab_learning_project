@@ -72,6 +72,53 @@ def sync_specified_terrain_level(
     ]
 
 
+def enforce_terrain_min_level(
+    env: ManagerBasedRlEnv,
+    env_ids: torch.Tensor | None,
+    terrain_columns: int | tuple[int, ...],
+    min_level: int = 2,
+) -> None:
+    """把指定地形列的最低课程等级 clamp 到 ``min_level``。
+
+    混合地形任务里，课程降级或 ``randomize_at_max`` 可能把某一列重新
+    随机到 level 0，使该列在几何上与平地无法区分。本函数在 reset 时把
+    这些列抬回 ``min_level``，并同步 ``env_origins``，保证后续
+    ``reset_base`` / 高度 command 使用正确的出生点与地形高度。
+
+    必须在读取 ``env_origins`` 的 reset 事件之前执行。
+    """
+    env_ids = resolve_env_ids(env, env_ids)
+    if len(env_ids) == 0:
+        return
+
+    terrain = getattr(env.scene, "terrain", None)
+    if (
+        terrain is None
+        or not hasattr(terrain, "terrain_levels")
+        or getattr(terrain, "terrain_origins", None) is None
+    ):
+        return
+
+    num_rows = terrain.terrain_origins.shape[0]
+    min_level = max(0, min(int(min_level), num_rows - 1))
+    if isinstance(terrain_columns, int):
+        terrain_columns = (terrain_columns,)
+
+    types = terrain.terrain_types[env_ids]
+    mask = torch.zeros_like(types, dtype=torch.bool)
+    for column in terrain_columns:
+        mask |= types == column
+    if not mask.any():
+        return
+
+    ids = env_ids[mask]
+    levels = terrain.terrain_levels[ids].clamp(min=min_level)
+    terrain.terrain_levels[ids] = levels
+    env.scene.env_origins[ids] = terrain.terrain_origins[
+        levels, terrain.terrain_types[ids]
+    ]
+
+
 def reset_root_state_from_stair(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
@@ -166,6 +213,24 @@ def idle_termination(
 
 
     return idle
+
+def root_below_origin_height(
+    env: ManagerBasedRlEnv,
+    min_height: float = -0.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when the root falls below its env origin by ``min_height``.
+
+    Unlike a fixed world-z threshold, this works on terrains whose walkable
+    surface is below z=0 (e.g. the half-competition map lower level).
+    """
+    asset: Entity = env.scene[asset_cfg.name]
+    z_rel = (
+        asset.data.root_link_pos_w[:, 2]
+        - env.scene.env_origins[:, 2]
+    )
+    return z_rel < float(min_height)
+
 
 def out_of_patch_bounds(
     env: ManagerBasedRlEnv,

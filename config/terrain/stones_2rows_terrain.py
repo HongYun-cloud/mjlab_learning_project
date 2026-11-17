@@ -7,6 +7,7 @@ import mujoco
 import numpy as np
 
 from mjlab.terrains.terrain_generator import (
+    FlatPatchSamplingCfg,
     SubTerrainCfg,
     TerrainGeneratorCfg,
     TerrainGeometry,
@@ -320,7 +321,14 @@ STONES_2ROWS_TERRAINS_CFG = TerrainGeneratorCfg(
     num_cols=1,
     curriculum=True,
     sub_terrains={
-        "stones_2rows": stones_2rows_terrain(proportion=1.0),
+        "stones_2rows": stones_2rows_terrain(
+            proportion=1.0,
+            flat_patch_sampling={
+                "goal": FlatPatchSamplingCfg(
+                    num_patches=1, patch_radius=0.5
+                ),
+            },
+        ),
     },
     add_lights=True,
 )

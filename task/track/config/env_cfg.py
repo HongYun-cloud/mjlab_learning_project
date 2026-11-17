@@ -63,6 +63,7 @@ from myrobot_mjlab.config.event.stair_waypoint import (
 )
 from myrobot_mjlab.config.reward.Trackingreward import (
   JointPowerBalancePenalty,
+  feet_too_close_penalty,
   goal_forward_bonus,
   stair_forward_speed_penalty,
   stair_waypoint_timeout,
@@ -843,6 +844,20 @@ def _apply_platform_like_config(
     func=mdp.self_collision_cost,
     weight=-0.1,
     params={"sensor_name": "shank_ground_touch"},
+  )
+
+  # 左右足端横向距离过近时惩罚，避免腿并拢/交叉。
+  # 前腿和后腿共用同一个奖励项，由 foot_pairs 统一管理。
+  cfg.rewards["feet_too_close"] = RewardTermCfg(
+    func=feet_too_close_penalty,
+    weight=-0.5,
+    params={
+      "min_distance": 0.18,
+      "foot_pairs": (
+        ("FL_foot", "FR_foot"),
+        ("RL_foot", "RR_foot"),
+      ),
+    },
   )
 
   cfg.terminations["illegal_contact"] = TerminationTermCfg(

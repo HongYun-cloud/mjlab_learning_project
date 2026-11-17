@@ -15,7 +15,7 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat stair stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat flat_stair_down flat_stair_down_stones_2rows flat_platform_stair_down flat_platform_stair_down_plum halfcompetitionmap stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 CHECKPOINT=""
 ARGS=()
@@ -55,6 +55,11 @@ TERRAIN="${TERRAIN//-/_}"
 
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
+    flat_stair_down|flatstairdown) SUFFIX="FlatStairDown" ;;
+    flat_stair_down_stones_2rows|flatstairdownstones2rows|flat_stair_down_stone2row|flatstairdownstone2row) SUFFIX="FlatStairDownStones2Rows" ;;
+    flat_platform_stair_down|flatplatformstairdown) SUFFIX="FlatPlatformStairDown" ;;
+    flat_platform_stair_down_plum|flatplatformstairdownplum|flat_stair_down_platform_plum|flatstairdownplatformplum) SUFFIX="FlatPlatformStairDownPlum" ;;
+    halfcompetitionmap|half_competition_map|half_competition) SUFFIX="HalfCompetitionMap" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
     stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
     stair_down|stairdown|down) SUFFIX="StairDown" ;;

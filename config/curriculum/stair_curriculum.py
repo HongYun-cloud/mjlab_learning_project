@@ -141,6 +141,8 @@ def terrain_levels_reach_target(
     distance_step: float = 0.5,
     max_distance: float = 5.0,
     min_distance: float = 2.0,
+    min_level: int | None = None,
+    min_level_columns: tuple[int, ...] | None = None,
     asset_cfg: SceneEntityCfg = _DEFAULT_SCENE_CFG,
 ) -> dict[str, torch.Tensor]:
     """Curriculum: advance terrain level (or target distance) when the robot reaches
@@ -173,6 +175,12 @@ def terrain_levels_reach_target(
     ``direct_random=True`` 时不做课程升降，每次 reset 直接在
     ``[0, max_level]``（``max_level=None`` 时为全部地形行）随机难度。
     平地任务则是在 ``[min_distance, max_distance]`` 随机目标距离。
+
+    最低难度
+    --------
+    ``min_level`` 非空时，对 ``min_level_columns`` 指定的地形列
+    （``None`` 表示全部列）clamp 到至少该等级。这保证混合地形任务里
+    某些列不会退回无法区分的 level 0，同时让日志反映 clamp 后的真实等级。
     """
     from myrobot_mjlab.config.reward.Trackingreward import _get_goal_pos
 
@@ -305,6 +313,24 @@ def terrain_levels_reach_target(
                     min=min_distance,
                 )
 
+    # 5.5 指定地形列的最低难度。必须在统计指标前 clamp，否则日志里的
+    # terrain_level 仍是 clamp 前的值；同时同步 env_origins，供后续
+    # reset_base / 高度 command 使用。
+    if min_level is not None and has_terrain_gen:
+        from myrobot_mjlab.config.event.stair_reset import (
+            enforce_terrain_min_level,
+        )
+
+        level_columns = min_level_columns
+        if level_columns is None:
+            level_columns = tuple(range(terrain.terrain_origins.shape[1]))
+        enforce_terrain_min_level(
+            env,
+            env_ids,
+            terrain_columns=level_columns,
+            min_level=min_level,
+        )
+
     # 6. 统计与监控指标
     result: dict[str, torch.Tensor] = {
         "reach_rate": reached.float().mean(),
@@ -331,6 +357,14 @@ def terrain_levels_reach_target(
                     mask = types == i
                     if mask.any():
                         result[name] = torch.mean(levels[mask])
+                    # Per-terrain reach rate helps diagnose mixed-terrain
+                    # teachers/students where the aggregate metric hides one
+                    # terrain failing.
+                    local_mask = types[env_ids] == i
+                    if local_mask.any():
+                        result[f"{name}_reach_rate"] = reached.float()[
+                            local_mask
+                        ].mean()
     elif increase_distance_on_flat and command_name in env.command_manager.active_terms:
         cmd_term = env.command_manager.get_term(command_name)
         if hasattr(cmd_term, "target_distances"):

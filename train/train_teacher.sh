@@ -7,12 +7,12 @@
 #   ./train/train_teacher.sh <run_name> -e <terrain> [-p <run_dir>] [-m <model>]
 #
 # terrain:
-#   flat | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
+#   flat | flat_stair_down | flat_stair_down_stones_2rows | flat_platform_stair_down | flat_platform_stair_down_plum | halfcompetitionmap | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat stair stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat flat_stair_down flat_stair_down_stones_2rows flat_platform_stair_down flat_platform_stair_down_plum halfcompetitionmap stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -43,6 +43,11 @@ TERRAIN="${TERRAIN//-/_}"
 
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
+    flat_stair_down|flatstairdown) SUFFIX="FlatStairDown" ;;
+    flat_stair_down_stones_2rows|flatstairdownstones2rows|flat_stair_down_stone2row|flatstairdownstone2row) SUFFIX="FlatStairDownStones2Rows" ;;
+    flat_platform_stair_down|flatplatformstairdown) SUFFIX="FlatPlatformStairDown" ;;
+    flat_platform_stair_down_plum|flatplatformstairdownplum|flat_stair_down_platform_plum|flatstairdownplatformplum) SUFFIX="FlatPlatformStairDownPlum" ;;
+    halfcompetitionmap|half_competition_map|half_competition) SUFFIX="HalfCompetitionMap" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
     stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
     stair_down|stairdown|down) SUFFIX="StairDown" ;;
@@ -63,8 +68,19 @@ train_parse_args "${ARGS[@]}"
 
 TASK="Mjlab-Tracking-${SUFFIX}-Teacher-Unitree-Go2"
 PROJECT="track_teacher"
-NUM_ENVS=512
-MAX_ITERATIONS=2000
+# 可通过环境变量覆盖，便于先跑小规模验证：
+#   NUM_ENVS=256 MAX_ITERATIONS=300 ./train/train_teacher.sh quick -e flat_stair_down
+NUM_ENVS="${NUM_ENVS:-512}"
+if [[ -z "${MAX_ITERATIONS:-}" ]]; then
+    # 混合地形比单地形难，默认训练更久。
+    if [[ "$SUFFIX" == "FlatPlatformStairDown" || "$SUFFIX" == "FlatPlatformStairDownPlum" || "$SUFFIX" == "FlatStairDownStones2Rows" || "$SUFFIX" == "HalfCompetitionMap" ]]; then
+        MAX_ITERATIONS=6000
+    elif [[ "$SUFFIX" == "FlatStairDown" ]]; then
+        MAX_ITERATIONS=4000
+    else
+        MAX_ITERATIONS=2000
+    fi
+fi
 
 echo "======================================"
 echo "       Go2 Teacher Training"

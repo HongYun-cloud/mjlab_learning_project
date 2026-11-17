@@ -256,6 +256,28 @@ class GoalDirectionCommand(CommandTerm):
         )
         dist = float(torch.linalg.norm(self.target_pos[idx] - robot_xy).detach().cpu())
 
+        # 移动速度命令 = Goal_direction 单位方向 * track_base_velocity 标量。
+        move_cmd = None
+        if "track_base_velocity" in self._env.command_manager.active_terms:
+            move_cmd = (
+                self._env.command_manager.get_command("track_base_velocity")[idx]
+                .detach()
+                .cpu()
+            )
+
+        move_html = (
+            "<div><b>Move command (body)</b></div>"
+            f"<div>dx: {float(cmd[0]): .3f}</div>"
+            f"<div>dy: {float(cmd[1]): .3f}</div>"
+        )
+        if move_cmd is not None:
+            speed = float(torch.linalg.norm(move_cmd[:2]))
+            move_html += (
+                f"<div>vx: {float(move_cmd[0]): .3f} m/s</div>"
+                f"<div>vy: {float(move_cmd[1]): .3f} m/s</div>"
+                f"<div>speed: {speed: .3f} m/s</div>"
+            )
+
         html = (
             '<div style="font-family: monospace; line-height: 1.45;">'
             "<div><b>Actual twist</b></div>"
@@ -264,9 +286,7 @@ class GoalDirectionCommand(CommandTerm):
             f"<div>wz: {float(ang_z): .3f} rad/s</div>"
             '<hr style="border: 0; border-top: 1px solid '
             'rgba(255,255,255,0.15); margin: 6px 0;"/>'
-            "<div><b>Goal command (body)</b></div>"
-            f"<div>dx: {float(cmd[0]): .3f}</div>"
-            f"<div>dy: {float(cmd[1]): .3f}</div>"
+            f"{move_html}"
             f"<div>heading error: {head_err_deg: .1f}°</div>"
             f"<div>target distance: {dist: .2f} m</div>"
             "</div>"
@@ -410,6 +430,76 @@ class GoalDirectionCommand(CommandTerm):
 
                 dropdown.on_update(_on_dropdown_change)
 
+                # 选择要查看哪个地形列对应的机器人。
+                terrain_types = getattr(terrain, "terrain_types", None)
+                sub_cfgs = getattr(generator_cfg, "sub_terrains", {}) or {}
+                if (
+                    terrain_types is not None
+                    and sub_cfgs
+                    and request_action is not None
+                ):
+                    if isinstance(terrain_types, torch.Tensor):
+                        types = (
+                            terrain_types.detach()
+                            .cpu()
+                            .reshape(-1)
+                            .tolist()
+                        )
+                    else:
+                        types = [
+                            int(t) for t in list(terrain_types)
+                        ]
+                    view_options: list[str] = []
+                    view_env_by_label: dict[str, int] = {}
+                    for column, terrain_name in enumerate(sub_cfgs):
+                        env_ids = [
+                            env_id
+                            for env_id, terrain_type in enumerate(types)
+                            if int(terrain_type) == column
+                        ]
+                        if not env_ids:
+                            continue
+                        label = f"{terrain_name}  (env {env_ids[0]})"
+                        view_options.append(label)
+                        view_env_by_label[label] = env_ids[0]
+
+                    if len(view_options) > 1:
+                        current_env = min(
+                            max(int(get_env_idx()), 0),
+                            max(len(types) - 1, 0),
+                        )
+                        current_column = (
+                            int(types[current_env]) if types else 0
+                        )
+                        initial_label = next(
+                            (
+                                label
+                                for label, env_id in view_env_by_label.items()
+                                if int(types[env_id]) == current_column
+                            ),
+                            view_options[0],
+                        )
+                        view_dropdown = server.gui.add_dropdown(
+                            "View Terrain (查看地形)",
+                            options=view_options,
+                            initial_value=initial_label,
+                        )
+
+                        def _on_view_terrain_change(_) -> None:
+                            env_id = view_env_by_label.get(
+                                view_dropdown.value
+                            )
+                            if env_id is not None:
+                                request_action(
+                                    "CUSTOM",
+                                    {
+                                        "type": "set_env_idx",
+                                        "env_idx": env_id,
+                                    },
+                                )
+
+                        view_dropdown.on_update(_on_view_terrain_change)
+
         # 3. 当前实际 twist 与目标方向
         with server.gui.add_folder("Current Twist (当前速度)"):
             self._twist_html = server.gui.add_html("")
@@ -460,17 +550,18 @@ class GoalDirectionCommand(CommandTerm):
             target_x = float(origin[0] + targets_local[batch, 0])
             target_y = float(origin[1] + targets_local[batch, 1])
 
-            # 目标落点 z：优先用当前高度指令，否则 fallback
+            # 目标落点 z（世界坐标）：Base_height_target 是相对 env origin 的高度，
+            # 必须加上 origin[2] 才能得到世界高度（stair_down 的 origin 在坑底）。
             base_z = float(origin[2])
             if target_heights is not None:
-                ref_z = float(target_heights[batch])
+                goal_z = base_z + float(target_heights[batch])
             else:
-                ref_z = max(float(robot_pos[2]), base_z)
+                goal_z = max(float(robot_pos[2]), base_z)
 
-            # 1. 竖立的鲜艳标杆 (从地面延伸至空中 1.4m，无论地形起伏都清晰可见)
+            # 1. 竖立的鲜艳标杆 (从目标落点向上延伸 1.2m，无论地形起伏都清晰可见)
             is_reached = bool(reached_mask[batch])
             pole_bottom = np.array([target_x, target_y, base_z - 0.2], dtype=np.float32)
-            pole_top = np.array([target_x, target_y, base_z + ref_z + 1.2], dtype=np.float32)
+            pole_top = np.array([target_x, target_y, goal_z + 1.2], dtype=np.float32)
             visualizer.add_cylinder(
                 start=pole_bottom,
                 end=pole_top,
@@ -497,7 +588,7 @@ class GoalDirectionCommand(CommandTerm):
 
             # 3. 目标落点标记球，z = Base_height_target 目标高度 (半径 0.15m)
             visualizer.add_sphere(
-                center=np.array([target_x, target_y, ref_z], dtype=np.float32),
+                center=np.array([target_x, target_y, goal_z], dtype=np.float32),
                 radius=0.15,
                 color=(
                     (0.1, 1.0, 0.2, 0.9)
@@ -509,7 +600,7 @@ class GoalDirectionCommand(CommandTerm):
 
             # 4. 从机身中心直接指向目标落点的荧光绿导航箭头
             arrow_start = np.array([robot_pos[0], robot_pos[1], robot_pos[2]], dtype=np.float32)
-            arrow_end = np.array([target_x, target_y, ref_z + 0.15], dtype=np.float32)
+            arrow_end = np.array([target_x, target_y, goal_z + 0.15], dtype=np.float32)
             visualizer.add_arrow(
                 start=arrow_start,
                 end=arrow_end,
@@ -635,6 +726,44 @@ class HeightTargetCommand(CommandTerm):
         self._foot_body_ids = ids
         return ids
 
+    def _target_ground_z(self) -> torch.Tensor | None:
+        """用 Goal_direction 目标点最近 flat patch 的高度作为目标地面高度。
+
+        返回相对 env origin 的 z；没有目标点或没有 flat patch 时返回 None。
+        """
+        if "Goal_direction" not in self._env.command_manager.active_terms:
+            return None
+        goal = self._env.command_manager.get_term("Goal_direction")
+        if not hasattr(goal, "target_pos"):
+            return None
+
+        terrain = getattr(self._env.scene, "terrain", None)
+        patches = getattr(terrain, "flat_patches", None)
+        levels = getattr(terrain, "terrain_levels", None)
+        types = getattr(terrain, "terrain_types", None)
+        if not patches or levels is None or types is None:
+            return None
+
+        origins = self._env.scene.env_origins
+        target_xy = origins[:, :2] + goal.target_pos[:, :2]
+        candidates: list[torch.Tensor] = []
+        for patch in patches.values():
+            if patch.ndim != 4:
+                continue
+            # flat_patches: [num_rows, num_cols, num_patches, 3]
+            candidates.append(patch[levels, types])
+        if not candidates:
+            return None
+
+        all_patches = torch.cat(candidates, dim=1)  # [N, P, 3]
+        dist = torch.linalg.norm(
+            all_patches[:, :, :2] - target_xy[:, None, :], dim=-1
+        )
+        nearest = dist.argmin(dim=-1)
+        batch = torch.arange(all_patches.shape[0], device=all_patches.device)
+        target_z_w = all_patches[batch, nearest, 2]
+        return target_z_w - origins[:, 2]
+
     @property
     def command(self) -> torch.Tensor:
         """返回当前步期望机身高度指令张量 (num_envs, 1)。"""
@@ -665,33 +794,37 @@ class HeightTargetCommand(CommandTerm):
         self._command[env_ids, 0] = self.cfg.nominal_height
 
     def _update_command(self, env_ids: torch.Tensor | None = None) -> None:
-        """每步用足端相对环境原点的 z 坐标估算地面高度，低通滤波后更新目标高度命令。"""
+        """用目标点位置的地面高度更新目标机身高度 command。"""
         ids = slice(None) if env_ids is None else env_ids
 
-        foot_ids = self._resolve_foot_ids()
+        target_ground_z = self._target_ground_z()
+        if target_ground_z is not None:
+            ground_z = target_ground_z[ids]
+            if self.cfg.ground_z_min is not None:
+                ground_z = ground_z.clamp(min=self.cfg.ground_z_min)
+        else:
+            # 没有目标点 flat patch 时，回退到足端地形估计。
+            foot_ids = self._resolve_foot_ids()
+            foot_pos_w = self.robot.data.body_link_pos_w
+            origin_z = self._env.scene.env_origins[:, 2:3]
+            foot_z_rel = foot_pos_w[:, foot_ids, 2] - origin_z
+            raw_ground_z = foot_z_rel.max(dim=-1).values
+            if self.cfg.ground_z_min is not None:
+                raw_ground_z = raw_ground_z.clamp(min=self.cfg.ground_z_min)
 
-        # 获取足端相对当前环境 Patch 原点的相对 z 坐标 (num_envs, num_feet)
-        # 彻底消除不同难度倒金字塔凹底绝对落差（-0.18m ~ -0.90m）造成的指令负数畸变！
-        foot_pos_w = self.robot.data.body_link_pos_w  # (num_envs, num_bodies, 3)
-        origin_z = self._env.scene.env_origins[:, 2:3]  # (num_envs, 1)
-        foot_z_rel = foot_pos_w[:, foot_ids, 2] - origin_z
+            alpha = self.cfg.height_smooth_alpha
+            ground_z = (
+                (1.0 - alpha) * self._ground_z[ids]
+                + alpha * raw_ground_z[ids]
+            )
 
-        # 取最大相对 z：跟随当前踩上的最高地形（楼梯 / 轮胎 / 平台）。
-        raw_ground_z = foot_z_rel.max(dim=-1).values
-        if self.cfg.ground_z_min is not None:
-            raw_ground_z = raw_ground_z.clamp(min=self.cfg.ground_z_min)
-
-        # 低通滤波平滑地面相对高度估计
-        alpha = self.cfg.height_smooth_alpha
-        ground_z = (1.0 - alpha) * self._ground_z[ids] + alpha * raw_ground_z[ids]
-
-        # waypoint 指定的目标高度优先于足端估计，保证多段楼梯的目标高度确定。
+        # waypoint 指定的目标高度优先，保证多段楼梯的目标高度确定。
         override = self._ground_z_override[ids]
         override_mask = ~torch.isnan(override)
         ground_z = torch.where(override_mask, override, ground_z)
         self._ground_z[ids] = ground_z
 
-        # 输出 = 相对地面高度 + 标称站立高度 (在凹底出生时严格为 nominal_height=0.28)
+        # 目标机身高度 = 目标点地面高度 + 标称站立高度。
         self._command[ids, 0] = self._ground_z[ids] + self.cfg.nominal_height
 
     def _update_metrics(self) -> None:
@@ -762,6 +895,9 @@ class GoalAlignedVelocityCommandCfg(UniformVelocityCommandCfg):
     align_speed_range: tuple[float, float] = (0.25, 0.6)
     """对齐时线速度大小的采样区间 (m/s)。设为相同值即为固定速度。"""
 
+    goal_deadzone: float = 0.35
+    """距 Goal_direction 目标点小于该距离时，速度命令自动置 0。"""
+
     align_heading: bool = True
     """是否由航向误差生成角速度指令；关闭则保留父类的随机角速度。"""
 
@@ -782,6 +918,17 @@ class GoalAlignedVelocityCommand(UniformVelocityCommand):
         # 对齐后的线速度大小 (每次重采样更新一次)
         self.align_speed = torch.zeros(self.num_envs, device=self.device)
         self._goal_term = None
+
+    def create_gui(
+        self,
+        name: str,
+        server,
+        get_env_idx,
+        on_change=None,
+        request_action=None,
+    ) -> None:
+        """固定速度命令不显示摇杆面板；Current Twist 面板已由 Goal_direction 提供。"""
+        return
 
     def _goal_command_term(self) -> GoalDirectionCommand | None:
         """懒加载 Goal_direction 指令项；该任务未配置时返回 None (退化为随机指令)。"""
@@ -824,10 +971,58 @@ class GoalAlignedVelocityCommand(UniformVelocityCommand):
                 self.cfg.align_heading_gain * head_err, min=lo, max=hi
             )
 
+        # 到达目标点后不再给速度命令，避免终点继续“要求前进”。
+        if self.cfg.goal_deadzone > 0.0:
+            robot_xy = (
+                self.robot.data.root_link_pos_w[:, :2]
+                - self._env.scene.env_origins[:, :2]
+            )
+            dist = torch.linalg.norm(goal.target_pos - robot_xy, dim=-1)
+            at_goal = dist < self.cfg.goal_deadzone
+            self.vel_command_b[at_goal] = 0.0
+            self.vel_command_w[at_goal] = 0.0
+
 
 # 别名兼容
 HeadingErrorCommandCfg = HeadErrorCommandCfg
 HeadingErrorCommand = HeadErrorCommand
+
+
+def _install_viser_env_selector_patch() -> None:
+    """Allow the tracking GUI to switch the Viser viewer's selected env.
+
+    ``GoalDirectionCommand.create_gui`` sends a ``CUSTOM`` action with
+    ``{"type": "set_env_idx", "env_idx": ...}``.  The stock Viser viewer has no
+    handler for that payload, so install a small forward-compatible patch.
+    """
+    try:
+        from mjlab.viewer.viser.viewer import UpdateReason, ViserPlayViewer
+    except Exception:
+        return
+
+    if getattr(ViserPlayViewer, "_tracking_env_selector_patch", False):
+        return
+
+    original_handle = ViserPlayViewer._handle_custom_action
+
+    def _handle_custom_action(self, action, payload):
+        if isinstance(payload, dict) and payload.get("type") == "set_env_idx":
+            try:
+                env_idx = int(payload.get("env_idx", 0))
+            except (TypeError, ValueError):
+                return True
+            env_idx = max(0, min(env_idx, int(self.env.num_envs) - 1))
+            self._scene.env_idx = env_idx
+            self._pending_update_reasons.add(UpdateReason.ENV_SWITCH)
+            return True
+        return original_handle(self, action, payload)
+
+    ViserPlayViewer._handle_custom_action = _handle_custom_action
+    ViserPlayViewer._tracking_env_selector_patch = True
+
+
+_install_viser_env_selector_patch()
+
 
 __all__ = [
     "GoalDirectionCommandCfg",

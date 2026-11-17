@@ -245,45 +245,42 @@ def standstill(
     distance_threshold: float = 0.25,
     heading_threshold: float = 0.5,
     t_r: float = 2.0,
+    foot_body_names: tuple[str, ...] | None = None,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     **kwargs,
 ) -> torch.Tensor:
-    r"""Standstill penalty magnitude near the goal.
+    r"""Standstill penalty near the goal.
 
     Gate:
         ||p_t - p_t^*|| < distance_threshold
-        ||q_t - q_*|| < heading_threshold   (yaw/heading error to goal, rad)
-        t > T - t_r
+
+    ``p_t`` is the four-foot center when ``foot_body_names`` is provided,
+    matching the arrival/foot-center rewards.  Otherwise it falls back to the
+    base link position.
 
     Value:
         2.5 * ||base_lin_vel|| + ||base_ang_vel||
+
+    ``t_r`` and ``heading_threshold`` are kept for config compatibility but
+    are ignored: the penalty is active whenever the robot is near the goal.
 
     The task config gives this term a weight of -1, so the actual reward is
     negative inside the gate and zero outside.
     """
     asset: Entity = env.scene[asset_cfg.name]
-    robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
     goal_pos = _get_goal_pos(env, command_name=command_name, **kwargs)
 
-    dim = goal_pos.shape[-1]
-    dist = torch.linalg.norm(robot_pos[:, :dim] - goal_pos, dim=-1)
-
-    heading_error = None
-    if command_name in env.command_manager.active_terms:
-        command_term = env.command_manager.get_term(command_name)
-        if hasattr(command_term, "heading_error"):
-            heading_error = command_term.heading_error
-            if heading_error.ndim > 1:
-                heading_error = heading_error.squeeze(-1)
-    if heading_error is None:
-        to_goal = goal_pos[:, :2] - robot_pos[:, :2]
-        target_yaw = torch.atan2(to_goal[:, 1], to_goal[:, 0])
-        heading_error = wrap_to_pi(target_yaw - asset.data.heading_w)
-    heading_ok = heading_error.abs() < heading_threshold
-
-    current_time = env.episode_length_buf * env.step_dt
-    time_ok = current_time > (env.max_episode_length_s - t_r)
-    gate = (dist < distance_threshold) & heading_ok & time_ok
+    if foot_body_names is not None:
+        robot_xy = (
+            _get_foot_center_xy(asset, foot_body_names)
+            - env.scene.env_origins[:, :2]
+        )
+        dist = torch.linalg.norm(robot_xy - goal_pos[:, :2], dim=-1)
+    else:
+        robot_pos = asset.data.root_link_pos_w - env.scene.env_origins
+        dim = goal_pos.shape[-1]
+        dist = torch.linalg.norm(robot_pos[:, :dim] - goal_pos, dim=-1)
+    gate = dist < distance_threshold
 
     lin_speed = torch.linalg.norm(asset.data.root_link_lin_vel_w, dim=-1)
     ang_speed = torch.linalg.norm(asset.data.root_link_ang_vel_w, dim=-1)
@@ -660,44 +657,64 @@ def goal_four_foot_contact_penalty(
     return ((dist < distance_threshold) & (count < min_contacts)).float()
 
 
-def front_feet_too_close_penalty(
+def feet_too_close_penalty(
     env: ManagerBasedRlEnv,
     min_distance: float = 0.18,
-    foot_body_names: tuple[str, str] = ("FL_foot", "FR_foot"),
+    foot_body_names: tuple[str, str] | None = None,
+    foot_pairs: tuple[tuple[str, str], ...] | None = None,
     asset_cfg: SceneEntityCfg = _DEFAULT_ASSET_CFG,
     **kwargs,
 ) -> torch.Tensor:
-    r"""Penalize the front left/right feet being too close laterally.
+    r"""Penalize left/right foot pairs being too close laterally.
 
-    The separation is measured along the body lateral (+Y) axis, so the
-    penalty is independent of the robot's yaw/roll.  For a pair of feet
-    ``FL_foot`` and ``FR_foot``:
+    By default checks the front pair.  Pass ``foot_pairs`` to manage front and
+    rear pairs with one reward term, e.g.::
 
-        lateral = |(p_FL - p_FR) · y_body|
-        penalty = max(min_distance - lateral, 0)
+        foot_pairs=(("FL_foot", "FR_foot"), ("RL_foot", "RR_foot"))
+
+    Separation is measured along the body lateral (+Y) axis, so the penalty is
+    independent of yaw/roll:
+
+        lateral = |(p_left - p_right) · y_body|
+        penalty = sum_pairs max(min_distance - lateral, 0)
 
     The reward term is expected to have a negative weight.
     """
     asset: Entity = env.scene[asset_cfg.name]
     body_names = list(asset.body_names)
-    try:
-        left_id = body_names.index(foot_body_names[0])
-        right_id = body_names.index(foot_body_names[1])
-    except ValueError as exc:
-        raise ValueError(
-            f"front_feet_too_close_penalty cannot find foot bodies "
-            f"{foot_body_names} in {body_names}"
-        ) from exc
 
-    foot_pos = asset.data.body_link_pos_w[:, [left_id, right_id], :]
-    delta = foot_pos[:, 0, :] - foot_pos[:, 1, :]
+    if foot_pairs is None:
+        if foot_body_names is None:
+            foot_body_names = ("FL_foot", "FR_foot")
+        foot_pairs = (foot_body_names,)
 
-    body_y = torch.zeros_like(delta)
+    foot_ids: list[tuple[int, int]] = []
+    for left_name, right_name in foot_pairs:
+        try:
+            foot_ids.append(
+                (body_names.index(left_name), body_names.index(right_name))
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"feet_too_close_penalty cannot find foot bodies "
+                f"{(left_name, right_name)} in {body_names}"
+            ) from exc
+
+    foot_pos = asset.data.body_link_pos_w
+    body_y = torch.zeros((env.num_envs, 3), device=env.device)
     body_y[:, 1] = 1.0
     body_y = quat_apply(asset.data.root_link_quat_w, body_y)
-    lateral = torch.abs(torch.sum(delta * body_y, dim=-1))
 
-    return torch.clamp(min_distance - lateral, min=0.0)
+    penalty = torch.zeros(env.num_envs, device=env.device)
+    for left_id, right_id in foot_ids:
+        delta = foot_pos[:, left_id, :] - foot_pos[:, right_id, :]
+        lateral = torch.abs(torch.sum(delta * body_y, dim=-1))
+        penalty += torch.clamp(min_distance - lateral, min=0.0)
+    return penalty
+
+
+# Backward-compatible alias for configs that still use the old front-only name.
+front_feet_too_close_penalty = feet_too_close_penalty
 
 
 def collision_penalty(

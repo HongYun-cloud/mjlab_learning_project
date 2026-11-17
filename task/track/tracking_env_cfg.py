@@ -36,6 +36,7 @@ from myrobot_mjlab.config.curriculum.stair_curriculum import (
   terrain_levels_reach_target,
 )
 from myrobot_mjlab.config.command.AllTrackingCommand import (
+  GoalAlignedVelocityCommandCfg,
   GoalDirectionCommandCfg,
   HeightTargetCommandCfg,
   HeadErrorCommandCfg,
@@ -44,6 +45,7 @@ from myrobot_mjlab.config.observation.Trackingobservation import (
   base_height,
   camera_depth,
   direction_real,
+  height_error,
   direction_to_goal,
   friction_coefficient,
   heading_to_goal_error,
@@ -148,8 +150,8 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           func=terrain_type,
           params={"terrain_type": None},
         ),
-        "height_command": ObservationTermCfg(
-          func=mdp.generated_commands,
+        "height_error": ObservationTermCfg(
+          func=height_error,
           params={"command_name": "Base_height_target"},
         ),
         "projected_gravity": ObservationTermCfg(
@@ -245,7 +247,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "base_ang_vel",
           "direction_goal",
           "head_error",
-          "height_command",
+          "height_error",
           "projected_gravity",
           "joint_pos",
           "joint_vel",
@@ -329,6 +331,20 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           height_smooth_alpha=0.05,
           resampling_time_range=(4.0, 10.0),
           debug_vis=True,
+        ),
+        # 标量目标速度：方向跟随 Goal_direction，速度固定为 0.8 m/s。
+        "track_base_velocity": GoalAlignedVelocityCommandCfg(
+          entity_name="robot",
+          goal_command_name="Goal_direction",
+          align_speed_range=(0.8, 0.8),
+          align_heading=False,
+          resampling_time_range=(10.0, 10.0),
+          ranges=UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(0.0, 0.0),
+            lin_vel_y=(0.0, 0.0),
+            ang_vel_z=(0.0, 0.0),
+          ),
+          debug_vis=False,
         ),
         "Heading_error": HeadErrorCommandCfg(
           entity_name="robot",
@@ -536,6 +552,7 @@ def make_velocity_env_cfg() -> ManagerBasedRlEnvCfg:
           "distance_threshold": 0.25,
           "heading_threshold": 0.5,
           "t_r": 2.0,
+          "foot_body_names": ("FR_foot", "FL_foot", "RR_foot", "RL_foot"),
         },
       ),
       # 终点附近生效

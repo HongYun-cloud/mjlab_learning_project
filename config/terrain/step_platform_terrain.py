@@ -7,6 +7,7 @@ import mujoco
 import numpy as np
 
 from mjlab.terrains.terrain_generator import (
+    FlatPatchSamplingCfg,
     SubTerrainCfg,
     TerrainGeneratorCfg,
     TerrainGeometry,
@@ -556,6 +557,11 @@ STEP_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
             # 再跨越中间的沟壑落到第二平台。
             spawn_on_platform=False,
             spawn_distance_before=1.5,
+            flat_patch_sampling={
+                "goal": FlatPatchSamplingCfg(
+                    num_patches=1, patch_radius=0.5
+                ),
+            },
         ),
     },
     add_lights=True,

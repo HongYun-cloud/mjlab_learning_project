@@ -59,7 +59,7 @@ _VEC3_CONTACT_FORCE: dict[str, tuple[float, float, float]] = {
 # Terms that are invariant under both reflections.
 _INVARIANT_TERMS = {
     "terrain_type",
-    "height_command",
+    "height_error",
     "base_height",
     "Friction_coefficient",
     "target_distance",

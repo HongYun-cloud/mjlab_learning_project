@@ -12,7 +12,7 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat flat_stair_up stair stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat flat_stair_up flat_stair_down flat_platform_stair_down flat_platform_stair_down_plum halfcompetitionmap stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 CHECKPOINT=""
 ARGS=()
@@ -53,6 +53,10 @@ TERRAIN="${TERRAIN//-/_}"
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
     flat_stair_up|flatstairup|mixed) SUFFIX="FlatStairUp" ;;
+    flat_stair_down|flatstairdown) SUFFIX="FlatStairDown" ;;
+    flat_platform_stair_down|flatplatformstairdown) SUFFIX="FlatPlatformStairDown" ;;
+    flat_platform_stair_down_plum|flatplatformstairdownplum|flat_stair_down_platform_plum|flatstairdownplatformplum) SUFFIX="FlatPlatformStairDownPlum" ;;
+    halfcompetitionmap|half_competition_map|half_competition) SUFFIX="HalfCompetitionMap" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
     stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
     stair_down|stairdown|down) SUFFIX="StairDown" ;;
@@ -86,6 +90,13 @@ if [[ -z "$MODEL" || ! -f "$MODEL" ]]; then
 fi
 
 TASK="Mjlab-Tracking-${SUFFIX}-Student-Unitree-Go2"
+PLAY_ARGS=()
+# 混合地形任务至少用 2~3 个 env，才能同时看到每一列地形。
+if [[ "$SUFFIX" == "FlatPlatformStairDown" ]]; then
+    PLAY_ARGS=(--num-envs 3)
+elif [[ "$SUFFIX" == "FlatStairUp" || "$SUFFIX" == "FlatStairDown" ]]; then
+    PLAY_ARGS=(--num-envs 2)
+fi
 
 echo "======================================"
 echo "       Go2 Student Play"
@@ -98,4 +109,5 @@ echo "======================================"
 
 uv run play "$TASK" \
     --checkpoint-file "$MODEL" \
+    "${PLAY_ARGS[@]}" \
     --viewer viser

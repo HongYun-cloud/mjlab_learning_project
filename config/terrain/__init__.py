@@ -10,6 +10,11 @@ from myrobot_mjlab.config.terrain.stair_terrain import (
     pyramid_stairs_inv,
     pyramid_stairs_up,
 )
+from myrobot_mjlab.config.terrain.half_competition_map_terrain import (
+    HALF_COMPETITION_MAP_TERRAINS_CFG,
+    HalfCompetitionMapTerrainCfg,
+    half_competition_map_terrain,
+)
 from myrobot_mjlab.config.terrain.step_platform_terrain import (
     STEP_PLATFORM_TERRAINS_CFG,
     StepPlatformTerrainCfg,
@@ -39,6 +44,9 @@ __all__ = [
     "pyramid_stairs_up",
     "pyramid_stairs_down",
     "pyramid_stairs_inv",
+    "HALF_COMPETITION_MAP_TERRAINS_CFG",
+    "HalfCompetitionMapTerrainCfg",
+    "half_competition_map_terrain",
     "STEP_PLATFORM_TERRAINS_CFG",
     "StepPlatformTerrainCfg",
     "step_platform_terrain",

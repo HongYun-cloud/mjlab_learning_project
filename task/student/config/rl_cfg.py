@@ -90,17 +90,35 @@ def my_go2_multi_teacher_distill_cfg(
     teachers: dict[str, str] | None = None,
     teacher_checkpoint: str | None = None,
     multi_teacher: bool = False,
+    gradient_length: int = 15,
+    student_init_std: float = 1.0,
+    deterministic_student: bool = False,
 ) -> MultiTeacherDistillationRunnerCfg:
     """Create a student task config.
 
     With ``multi_teacher=False`` this is the legacy single-teacher setup.
     With ``multi_teacher=True`` the ``teachers`` dict is keyed by sub-terrain
     name and every env is routed to its matching teacher.
+
+    ``gradient_length`` is the number of consecutive environment steps used
+    per distillation update.  Keep it aligned with ``num_steps_per_env`` (24)
+    to avoid leaving steps out of the backward pass.
+
+    ``student_init_std`` is the student action-distribution std.  The
+    distillation loss imitates the teacher's mean action, so a large std only
+    adds rollout noise; use a small value (e.g. 0.1) for distillation.
     """
     cfg = MultiTeacherDistillationRunnerCfg()
     cfg.terrain_key = terrain_key
     cfg.teachers = dict(teachers or TEACHER_CHECKPOINTS)
     cfg.multi_teacher = multi_teacher
+    cfg.algorithm.gradient_length = gradient_length
+    cfg.student.distribution_cfg["init_std"] = student_init_std
+    if deterministic_student:
+        cfg.algorithm.class_name = (
+            "myrobot_mjlab.task.student.config.deterministic_distillation:"
+            "DeterministicDistillation"
+        )
 
     if multi_teacher:
         # Teachers are external; never restore them from the student

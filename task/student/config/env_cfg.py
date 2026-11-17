@@ -31,9 +31,6 @@ from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from myrobot_mjlab.task.student.tracking_env_cfg import make_velocity_env_cfg
 from mjlab.scene import SceneCfg
 from mjlab.terrains import TerrainEntityCfg
-from myrobot_mjlab.config.terrain.mixed_terrain import (
-    FLAT_STAIR_UP_TERRAINS_CFG,
-)
 from myrobot_mjlab.config.terrain.stair_terrain import (
     STAIRS_COMBINED_TERRAINS_CFG,
     STAIRS_DOWN_TERRAINS_CFG,
@@ -49,7 +46,10 @@ from myrobot_mjlab.config.terrain.stones_2rows_terrain import (
     STONES_2ROWS_TERRAINS_CFG,
 )
 from myrobot_mjlab.config.curriculum.stair_curriculum import terrain_levels_reach_target, anneal_reward_weight
-from myrobot_mjlab.config.event.stair_reset import reset_root_state_from_stair,out_of_patch_bounds
+from myrobot_mjlab.config.event.stair_reset import (
+  out_of_patch_bounds,
+  reset_root_state_from_stair,
+)
 from myrobot_mjlab.config.event.tire_reset import reset_root_state_from_tire
 from myrobot_mjlab.config.event.plum_reset import randomize_plum_target
 from myrobot_mjlab.config.event.stones_reset import (
@@ -57,6 +57,8 @@ from myrobot_mjlab.config.event.stones_reset import (
   randomize_stones_target,
 )
 from myrobot_mjlab.config.event.stair_waypoint import (
+  _set_height_command_ground_z,
+  _stair_total_height,
   reset_root_state_at_stair_top,
   reset_root_state_west_of_stair,
   reset_stair_down_height_target,
@@ -73,9 +75,9 @@ from myrobot_mjlab.config.reward.Trackingreward import (
 )
 from myrobot_mjlab.config.reward.stair_reward import track_linear_velocity_stair
 from myrobot_mjlab.config.command.AllTrackingCommand import (
+  CARDINAL_OFFSETS,
   GoalDirectionCommandCfg,
   HeightTargetCommandCfg,
-  HeadErrorCommandCfg,
 )
 from myrobot_mjlab.config.command.TireVelocityCommand import TireTraverseVelocityCommandCfg
 from mjlab.managers.command_manager import CommandTermCfg
@@ -205,7 +207,6 @@ def my_go2_rough_env_cfg(
   if "upright" in cfg.rewards:
     cfg.rewards["upright"].params["asset_cfg"].body_names = ("base_link",)
 
-  cfg.rewards["angular_momentum"].weight = 0.0
   if "air_time" in cfg.rewards:
     cfg.rewards["air_time"].weight = 0.0
 
@@ -214,11 +215,6 @@ def my_go2_rough_env_cfg(
     func=mdp.self_collision_cost,
     weight=-0.1,
     params={"sensor_name": self_collision_cfg.name},
-  )
-  cfg.rewards["shank_collision"] = RewardTermCfg(
-    func=mdp.self_collision_cost,
-    weight=-0.1,
-    params={"sensor_name": shank_ground_cfg.name},
   )
   # cfg.rewards["trunk_head_collision"] = RewardTermCfg(
   #   func=mdp.self_collision_cost,
@@ -274,14 +270,9 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   if "upright" in cfg.rewards:
     cfg.rewards["upright"].params.pop("terrain_sensor_names", None)
 
-  # 3. 碰撞惩罚：平地保留 shank_collision 避免小腿触地拖拽
+  # 3. 碰撞惩罚
   for key in ("self_collisions", "trunk_head_collision"):
     cfg.rewards.pop(key, None)
-  cfg.rewards["shank_collision"] = RewardTermCfg(
-    func=mdp.self_collision_cost,
-    weight=-0.1,
-    params={"sensor_name": "shank_ground_touch"},
-  )
 
   # 4. 终止条件：平地加入 fell_over、大腿触地 illegal_contact。
   cfg.terminations["fell_over"] = TerminationTermCfg(
@@ -310,6 +301,7 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # 5. 平地步态与速度约束（目标速度设为 0.8 m/s，提升脚掌离地与站姿高度稳定性）
 
   cfg.rewards["track_target_bias"].params["speed_std"] = 0.25
+  cfg.rewards["normal_pose"].params["distance_threshold"] = None
   if "air_time" in cfg.rewards:
     cfg.rewards["air_time"].weight = 0.05
   if "pose" in cfg.rewards:
@@ -351,10 +343,6 @@ def my_go2_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cmd_height.nominal_height = 0.25
   cmd_height.height_smooth_alpha = 0.05
 
-  cmd_head = cfg.commands["Heading_error"]
-  assert isinstance(cmd_head, HeadErrorCommandCfg)
-  cmd_head.resampling_time_range = (10.0, 10.0)
-
   if play:
     cfg.scene.num_envs = 1
 
@@ -384,12 +372,6 @@ def _make_stair_env_cfg(
 
   for key in ("self_collisions", "trunk_head_collision", "air_time"):
     cfg.rewards.pop(key, None)
-
-  cfg.rewards["shank_collision"] = RewardTermCfg(
-    func=mdp.self_collision_cost,
-    weight=-0.1,
-    params={"sensor_name": "shank_ground_touch"},
-  )
 
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
@@ -425,7 +407,6 @@ def _make_stair_env_cfg(
   cfg.rewards["track_target_position"].weight = 2.0
   cfg.rewards["track_target_position"].params["t_r"] = 5.0
   cfg.rewards["track_target_bias"].params["t_r"] = 10.0
-  cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
 
   # stair 课程：通过 level 5 后不再继续加难，在 0~5 之间随机。
@@ -436,7 +417,7 @@ def _make_stair_env_cfg(
   # stair 专用：前向速度低于期望值时给温和惩罚；终点附近关闭。
   cfg.rewards["stair_speed_tracking"] = RewardTermCfg(
     func=stair_forward_speed_penalty,
-    weight=-0.1,
+    weight=-0.05,
     params={
       "command_name": "Goal_direction",
       "desired_speed": 0.8,
@@ -477,58 +458,6 @@ def my_go2_stair_up_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   if play:
     cfg.scene.num_envs = 1
     cfg.scene.terrain.max_init_terrain_level = 5
-  return cfg
-
-
-def my_go2_flat_stair_up_env_cfg(
-  play: bool = False,
-) -> ManagerBasedRlEnvCfg:
-  """Mixed flat + stair-up environment for two-teacher distillation.
-
-  - Terrain columns: 0 = flat, 1 = stair_up (see mixed_terrain.py).
-  - ``terrain_types`` is the per-env column index; the teacher group uses it
-    to route each env to the matching teacher.
-  - The student actor does NOT receive ``terrain_type``; the teacher critic
-    keeps the per-env one-hot as privileged information.
-  """
-  cfg = _make_stair_env_cfg(
-    play=play,
-    include_terrain_type_in_actor=False,
-  )
-
-  cfg.scene.terrain = TerrainEntityCfg(
-    terrain_type="generator",
-    terrain_generator=replace(FLAT_STAIR_UP_TERRAINS_CFG),
-    max_init_terrain_level=0,
-  )
-
-  # Both terrain patches are 12 x 12 m; leave a small safety margin.
-  cfg.terminations["out_of_patch_bounds"].params = {
-    "half_size": 5.8,
-    "margin": 0.2,
-  }
-
-  # Unified reset:
-  # - flat envs: _stair_total_height returns 0 -> spawn at patch center;
-  # - stair_up envs: spawn at the pyramid top.
-  cfg.events["reset_base"] = EventTermCfg(
-    func=reset_root_state_at_stair_top,
-    mode="reset",
-    params={
-      "target_distance": 3.8,
-      "nominal_height": 0.28,
-    },
-  )
-
-  cmd_goal = cfg.commands["Goal_direction"]
-  assert isinstance(cmd_goal, GoalDirectionCommandCfg)
-  cmd_goal.cardinal_directions = ("E", "N", "W", "S")
-  cmd_goal.target_distance = 3.8
-
-  if play:
-    cfg.scene.num_envs = 1
-    cfg.scene.terrain.max_init_terrain_level = 0
-
   return cfg
 
 
@@ -868,6 +797,142 @@ def update_platform_goal_distance(
   )
 
 
+_PLATFORM_DIRECTION_VECTORS: dict[str, tuple[float, float]] = {
+  "+x": (1.0, 0.0),
+  "-x": (-1.0, 0.0),
+  "+y": (0.0, 1.0),
+  "-y": (0.0, -1.0),
+}
+
+
+def _reset_mixed_goal_targets(
+  env,
+  env_ids,
+  command_name: str = "Goal_direction",
+  platform_columns: tuple[int, ...] = (),
+  flat_stair_distance: float = 3.8,
+) -> None:
+  """Set per-column Goal_direction targets for the mixed student task.
+
+  - flat / stair_down: random cardinal direction * ``flat_stair_distance``;
+  - platform: platform direction * the difficulty-dependent distance from
+    ``update_platform_goal_distance``.
+  """
+  if len(env_ids) == 0:
+    return
+
+  command = env.command_manager.get_term(command_name)
+  terrain = env.scene.terrain
+  types = terrain.terrain_types[env_ids]
+
+  platform_mask = torch.zeros_like(types, dtype=torch.bool)
+  for column in platform_columns:
+    platform_mask |= types == column
+  platform_ids = env_ids[platform_mask]
+  other_ids = env_ids[~platform_mask]
+
+  if len(platform_ids) > 0:
+    update_platform_goal_distance(env, platform_ids, command_name)
+
+  if not hasattr(command, "target_positions"):
+    command.target_positions = torch.zeros(
+      (env.num_envs, 2), device=env.device, dtype=torch.float32
+    )
+
+  targets = torch.zeros(
+    (len(env_ids), 2), device=env.device, dtype=torch.float32
+  )
+
+  if len(other_ids) > 0:
+    directions = torch.tensor(
+      list(CARDINAL_OFFSETS.values()),
+      device=env.device,
+      dtype=torch.float32,
+    )
+    choice = torch.randint(
+      0, len(CARDINAL_OFFSETS), (len(other_ids),), device=env.device
+    )
+    targets[~platform_mask] = directions[choice] * flat_stair_distance
+    if hasattr(command, "target_distances"):
+      command.target_distances[other_ids] = flat_stair_distance
+
+  if len(platform_ids) > 0:
+    platform_sub = next(
+      sub
+      for sub in terrain.cfg.terrain_generator.sub_terrains.values()
+      if hasattr(sub, "num_mid_platforms")
+    )
+    direction = torch.tensor(
+      _PLATFORM_DIRECTION_VECTORS[platform_sub.direction],
+      device=env.device,
+      dtype=torch.float32,
+    )
+    targets[platform_mask] = (
+      command.target_distances[platform_ids].unsqueeze(-1) * direction
+    )
+
+  command.target_positions[env_ids] = targets
+  command.target_pos[env_ids] = targets
+  command._update_command(env_ids)
+
+
+def _reset_mixed_height_target(
+  env,
+  env_ids,
+  height_command_name: str = "Base_height_target",
+  platform_columns: tuple[int, ...] = (),
+) -> None:
+  """Per-column height target.
+
+  - flat: ground_z = 0
+  - stair_down: ground_z = pyramid total height
+  - platform: clear the override (NaN), so HeightTargetCommand follows the
+    goal platform's flat patch dynamically.
+  """
+  if len(env_ids) == 0:
+    return
+
+  ground_z = _stair_total_height(env, env_ids)
+  types = env.scene.terrain.terrain_types[env_ids]
+  platform_mask = torch.zeros_like(types, dtype=torch.bool)
+  for column in platform_columns:
+    platform_mask |= types == column
+  ground_z[platform_mask] = float("nan")
+  _set_height_command_ground_z(
+    env, env_ids, ground_z, height_command_name
+  )
+
+
+def _out_of_patch_bounds_by_terrain(
+  env,
+  half_size: float = 4.5,
+  platform_half_size_x: float = 8.0,
+  platform_half_size_y: float = 4.0,
+  platform_columns: tuple[int, ...] = (),
+  margin: float = 0.2,
+  asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+  """Per-column patch bounds: platform allows the longer traverse."""
+  standard = out_of_patch_bounds(
+    env, half_size=half_size, margin=margin, asset_cfg=asset_cfg
+  )
+  if not platform_columns:
+    return standard
+
+  platform = out_of_patch_bounds(
+    env,
+    half_size_x=platform_half_size_x,
+    half_size_y=platform_half_size_y,
+    margin=margin,
+    asset_cfg=asset_cfg,
+  )
+  types = env.scene.terrain.terrain_types
+  platform_mask = torch.zeros_like(types, dtype=torch.bool)
+  for column in platform_columns:
+    platform_mask |= types == column
+  return torch.where(platform_mask, platform, standard)
+
+
 def _apply_platform_like_config(
   cfg: ManagerBasedRlEnvCfg,
   *,
@@ -888,12 +953,6 @@ def _apply_platform_like_config(
 
   for key in ("self_collisions", "trunk_head_collision", "air_time"):
     cfg.rewards.pop(key, None)
-
-  cfg.rewards["shank_collision"] = RewardTermCfg(
-    func=mdp.self_collision_cost,
-    weight=-0.1,
-    params={"sensor_name": "shank_ground_touch"},
-  )
 
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
@@ -918,11 +977,9 @@ def _apply_platform_like_config(
   cfg.rewards["track_target_position"].weight = 2.0
   cfg.rewards["track_target_position"].params["t_r"] = 5.0
   cfg.rewards["track_target_bias"].params["t_r"] = 10.0
-  cfg.rewards["standstill"].params["t_r"] = 5.0
   cfg.rewards["stand_pose"].params["t_r"] = 5.0
 
   # Platform 的额外权重调整。
-  cfg.rewards["torque_penalty"].weight = -1.0e-4
   cfg.rewards["aggressive_motion"].weight = -4.0
 
 
@@ -1037,13 +1094,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     max_init_terrain_level=0,
   )
 
-  # 1. 碰撞与步态约束（同步平地有效参数）
-  cfg.rewards["shank_collision"] = RewardTermCfg(
-    func=mdp.self_collision_cost,
-    weight=-0.1,
-    params={"sensor_name": "shank_ground_touch"},
-  )
-  # 2. 终止条件：大腿触地 illegal_contact，以及摔倒翻车限制 fell_over (70度)
+  # 1. 终止条件：大腿触地 illegal_contact，以及摔倒翻车限制 fell_over (70度)
   cfg.terminations["illegal_contact"] = TerminationTermCfg(
     func=mdp.illegal_contact,
     params={"sensor_name": "thigh_ground_touch"},
@@ -1075,7 +1126,7 @@ def my_go2_plum_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["normal_pose"].params["distance_threshold"] = None
 
   # Plum 专项：终止惩罚和前期前进引导。
-  cfg.rewards["termination_penalty"].weight = -200.0
+  cfg.rewards["termination_penalty"].weight = -10.0
   cfg.rewards["track_target_position"].dense = True
   cfg.rewards["goal_forward_bonus"] = RewardTermCfg(
     func=goal_forward_bonus,

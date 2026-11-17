@@ -7,7 +7,7 @@
 #   ./train/train_student.sh <run_name> -e <terrain> [-t <teacher_checkpoint>] [-p <student_run>] [-m <student_model>]
 #
 # terrain:
-#   flat | flat_stair_up | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
+#   flat | flat_stair_up | flat_stair_down | flat_platform_stair_down | flat_platform_stair_down_plum | halfcompetitionmap | stair | stair_up | stair_down | platform | plum | stones | tire | low_clearance_bar
 #
 # -t: 教师 PPO checkpoint（文件或目录；目录时取最新的 *.pt）
 #     不指定时使用 task/student/config/teachers.py 里的注册路径。
@@ -16,7 +16,7 @@
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname -- "$SCRIPT_DIR")" || exit 1
 
-AVAILABLE_TERRAINS="flat flat_stair_up stair stair_up stair_down platform plum stones tire low_clearance_bar"
+AVAILABLE_TERRAINS="flat flat_stair_up flat_stair_down flat_platform_stair_down flat_platform_stair_down_plum halfcompetitionmap stair stair_up stair_down platform plum stones tire low_clearance_bar"
 TERRAIN="flat"
 TEACHER_CHECKPOINT=""
 TEACHER_ARG_GIVEN=0
@@ -59,6 +59,10 @@ TERRAIN="${TERRAIN//-/_}"
 case "$TERRAIN" in
     flat) SUFFIX="Flat" ;;
     flat_stair_up|flatstairup|mixed) SUFFIX="FlatStairUp" ;;
+    flat_stair_down|flatstairdown) SUFFIX="FlatStairDown" ;;
+    flat_platform_stair_down|flatplatformstairdown) SUFFIX="FlatPlatformStairDown" ;;
+    flat_platform_stair_down_plum|flatplatformstairdownplum|flat_stair_down_platform_plum|flatstairdownplatformplum) SUFFIX="FlatPlatformStairDownPlum" ;;
+    halfcompetitionmap|half_competition_map|half_competition) SUFFIX="HalfCompetitionMap" ;;
     stair_up|stairup|up) SUFFIX="StairUp" ;;
     stair|stairs|stair_combined|combined_stair|combined_stairs) SUFFIX="Stair" ;;
     stair_down|stairdown|down) SUFFIX="StairDown" ;;
@@ -94,9 +98,9 @@ fi
 TEACHER_ARGS=()
 if [[ "$SUFFIX" == "FlatStairUp" ]]; then
     if [[ -n "$TEACHER_CHECKPOINT" ]]; then
-        echo "提示：FlatStairUp 使用 teachers.py 中的 flat/stair_up 两个教师，-t 会被忽略。"
+        echo "提示：${SUFFIX} 使用 teachers.py 中的教师配置，-t 会被忽略。"
     fi
-    echo "提示：FlatStairUp 的教师来自 task/student/config/teachers.py。"
+    echo "提示：${SUFFIX} 的教师来自 task/student/config/teachers.py。"
 elif [[ -n "$TEACHER_CHECKPOINT" ]]; then
     TEACHER_ARGS=(--agent.teacher-checkpoint "$TEACHER_CHECKPOINT")
 else
@@ -105,8 +109,16 @@ fi
 
 TASK="Mjlab-Tracking-${SUFFIX}-Student-Unitree-Go2"
 PROJECT="track_student"
-NUM_ENVS=512
-MAX_ITERATIONS=5000
+# 可通过环境变量覆盖，便于先跑小规模验证：
+#   NUM_ENVS=128 MAX_ITERATIONS=500 ./train/train_student.sh quick -e flat_stair_down
+NUM_ENVS="${NUM_ENVS:-512}"
+if [[ -z "${MAX_ITERATIONS:-}" ]]; then
+    if [[ "$SUFFIX" == "FlatPlatformStairDown" || "$SUFFIX" == "FlatPlatformStairDownPlum" || "$SUFFIX" == "HalfCompetitionMap" ]]; then
+        MAX_ITERATIONS=6000
+    else
+        MAX_ITERATIONS=5000
+    fi
+fi
 
 echo "======================================"
 echo "       Go2 Student Distillation"

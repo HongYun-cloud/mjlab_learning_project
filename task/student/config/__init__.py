@@ -4,7 +4,6 @@ from mjlab.tasks.registry import register_mjlab_task
 
 from .env_cfg import (
     my_go2_flat_env_cfg,
-    my_go2_flat_stair_up_env_cfg,
     my_go2_low_clearance_bar_env_cfg,
     my_go2_platform_env_cfg,
     my_go2_plum_env_cfg,
@@ -13,6 +12,13 @@ from .env_cfg import (
     my_go2_stair_up_env_cfg,
     my_go2_stones_2rows_env_cfg,
     my_go2_tire_env_cfg,
+)
+from .mutitask_env_cfg import (
+    my_go2_flat_platform_stair_down_env_cfg,
+    my_go2_flat_platform_stair_down_plum_env_cfg,
+    my_go2_flat_stair_down_env_cfg,
+    my_go2_flat_stair_up_env_cfg,
+    my_go2_half_competition_map_env_cfg,
 )
 from .multi_teacher import MultiTeacherDistillationRunner
 from .rl_cfg import my_go2_multi_teacher_distill_cfg
@@ -54,6 +60,77 @@ register_mjlab_task(
         terrain_key="FlatStairUp",
         teachers=TEACHER_CHECKPOINTS_FLAT_STAIR_UP,
         multi_teacher=True,
+    ),
+    runner_cls=MultiTeacherDistillationRunner,
+)
+
+# Mixed flat + stair_down task: one student distilling from the generalist
+# mixed teacher (privileged terrain_type input).  The student actor has no
+# terrain_type; it must infer flat vs stair_down from height_scan/height_error.
+# Deterministic student rollouts (mean action) avoid the stock Distillation
+# std=1.0 action noise, which otherwise causes early falls and very short
+# episodes.  To go back to per-terrain specialist teachers, set
+# multi_teacher=True and pass TEACHER_CHECKPOINTS_FLAT_STAIR_DOWN instead.
+register_mjlab_task(
+    task_id="Mjlab-Tracking-FlatStairDown-Student-Unitree-Go2",
+    env_cfg=my_go2_flat_stair_down_env_cfg(),
+    play_env_cfg=my_go2_flat_stair_down_env_cfg(play=True),
+    rl_cfg=my_go2_multi_teacher_distill_cfg(
+        terrain_key="FlatStairDown",
+        teachers=TEACHER_CHECKPOINTS,
+        multi_teacher=False,
+        gradient_length=24,
+        deterministic_student=True,
+    ),
+    runner_cls=MultiTeacherDistillationRunner,
+)
+
+# Mixed flat + platform + stair_down task: one unlabeled student distilling
+# from the generalist mixed teacher.  Actor has no terrain_type; the critic
+# keeps the privileged one-hot.  Fill TEACHER_CHECKPOINTS["FlatPlatformStairDown"]
+# after training the teacher.
+register_mjlab_task(
+    task_id="Mjlab-Tracking-FlatPlatformStairDown-Student-Unitree-Go2",
+    env_cfg=my_go2_flat_platform_stair_down_env_cfg(),
+    play_env_cfg=my_go2_flat_platform_stair_down_env_cfg(play=True),
+    rl_cfg=my_go2_multi_teacher_distill_cfg(
+        terrain_key="FlatPlatformStairDown",
+        teachers=TEACHER_CHECKPOINTS,
+        multi_teacher=False,
+        gradient_length=24,
+        deterministic_student=True,
+    ),
+    runner_cls=MultiTeacherDistillationRunner,
+)
+
+# Mixed flat + stair_down + platform + plum task: one unlabeled student
+# distilling from the generalist teacher.  Fill
+# TEACHER_CHECKPOINTS["FlatPlatformStairDownPlum"] after training the teacher.
+register_mjlab_task(
+    task_id="Mjlab-Tracking-FlatPlatformStairDownPlum-Student-Unitree-Go2",
+    env_cfg=my_go2_flat_platform_stair_down_plum_env_cfg(),
+    play_env_cfg=my_go2_flat_platform_stair_down_plum_env_cfg(play=True),
+    rl_cfg=my_go2_multi_teacher_distill_cfg(
+        terrain_key="FlatPlatformStairDownPlum",
+        teachers=TEACHER_CHECKPOINTS,
+        multi_teacher=False,
+        gradient_length=24,
+        deterministic_student=True,
+    ),
+    runner_cls=MultiTeacherDistillationRunner,
+)
+
+# Composite half-competition map.  Single generalist teacher checkpoint.
+register_mjlab_task(
+    task_id="Mjlab-Tracking-HalfCompetitionMap-Student-Unitree-Go2",
+    env_cfg=my_go2_half_competition_map_env_cfg(),
+    play_env_cfg=my_go2_half_competition_map_env_cfg(play=True),
+    rl_cfg=my_go2_multi_teacher_distill_cfg(
+        terrain_key="HalfCompetitionMap",
+        teachers=TEACHER_CHECKPOINTS,
+        multi_teacher=False,
+        gradient_length=24,
+        deterministic_student=True,
     ),
     runner_cls=MultiTeacherDistillationRunner,
 )
